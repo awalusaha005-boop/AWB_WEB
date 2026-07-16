@@ -92,6 +92,19 @@ export async function sendEmailLink(email) {
   window.localStorage.setItem("emailForSignIn", email);
 }
 
+// ── Google Sign-In ──
+export async function signInWithGoogle() {
+  if (!auth) return null;
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const result = await auth.signInWithPopup(provider);
+    return result.user;
+  } catch (err) {
+    console.error("Google sign-in error:", err);
+    return null;
+  }
+}
+
 // ── Sign Out ──
 export async function signOut() {
   if (!auth) return;
