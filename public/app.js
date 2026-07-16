@@ -11,6 +11,7 @@ import {
   buildDestination, buildOrigin, matchDestination, getBiteshipDiag,
   createBiteshipRow, createBinderbyteRow, escapeXml, cleanCity,
 } from "./helpers.js";
+import { initAuth, getAuthUser, logout } from "./auth.js";
 
 // ── Constants ──
 const PREFIX = "0046";
@@ -125,13 +126,19 @@ function sleep(ms) {
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
+  initAuth(initApp);
+});
+async function initApp() {
   loadSettings();
   applyTheme(settings.theme);
   ml = await AwbMlEngine.loadWithSeed();
   log("Siap. Kurir: " + COURIER, "info");
   log(`Mesin ML dimuat: ${ml.history.length} data | ${Object.keys(ml.cityKdes).length} kota KDE | batas AREA=${ml.getAreaCeiling()}`, "system");
   checkProgressOnStartup();
+
+  // Update license badge with username
+  updateLicenseDisplay();
 
   // Wire up UI
   document.getElementById("btnTrack").onclick = btnTrackClick;
@@ -167,13 +174,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Log: flush via requestAnimationFrame (no batching delay)
   logRafId = requestAnimationFrame(flushLogQueue);
 
-  // License countdown (placeholder — no license in web version)
-  updateLicenseDisplay();
-  setInterval(updateLicenseDisplay, 1000);
-
   // Run splash sequence after UI is ready
   runSplashSequence();
-});
+}
 
 // ═══════════════════════════════════════════════════════
 // API CALL — proxy via /api/track (Vercel serverless)
@@ -1091,14 +1094,19 @@ function flushLogQueue() {
 // LICENSE (placeholder — web version has no HWID license)
 // ═══════════════════════════════════════════════════════
 function updateLicenseDisplay() {
+  const user = getAuthUser();
   const el = document.getElementById("licenseBadge");
-  if (settings.provider === "binderbyte") {
-    el.textContent = "📡 Binderbyte";
-    el.style.color = "#06d6e8";
-  } else {
-    el.textContent = "📡 Biteship Public";
-    el.style.color = "#10b981";
-  }
+  const name = user?.username || "Guest";
+  el.textContent = "\uD83D\uDC64 " + name;
+  el.style.color = "#06d6e8";
+  el.title = "Klik untuk logout";
+  el.style.cursor = "pointer";
+  el.onclick = () => {
+    if (confirm("Logout dari " + name + "?")) {
+      logout();
+      location.reload();
+    }
+  };
 }
 
 // ═══════════════════════════════════════════════════════
