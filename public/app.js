@@ -125,12 +125,12 @@ function sleep(ms) {
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   loadSettings();
   applyTheme(settings.theme);
-  ml = AwbMlEngine.load();
+  ml = await AwbMlEngine.loadWithSeed();
   log("Siap. Kurir: " + COURIER, "info");
-  log(`Mesin ML dimuat: ${ml.history.length} data | batas AREA=${ml.getAreaCeiling()}`, "system");
+  log(`Mesin ML dimuat: ${ml.history.length} data | ${Object.keys(ml.cityKdes).length} kota KDE | batas AREA=${ml.getAreaCeiling()}`, "system");
   checkProgressOnStartup();
 
   // Wire up UI

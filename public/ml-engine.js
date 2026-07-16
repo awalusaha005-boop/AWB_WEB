@@ -1,23 +1,34 @@
 // ═══════════════════════════════════════════════════════
-// ml-engine.js — Port dari AwbMlEngine.cs
+// ml-engine.js — Port dari AwbMlEngine.cs + By RB trained model
 // Ridge regression (MID prediction) + KDE (AREA ordering)
+// v3: Trained weights from By RB V2 + standardization + seed data
 // ═══════════════════════════════════════════════════════
 
 // ── Ridge model for MID prediction ──
 export class RidgeModel {
   constructor() {
-    // Trained params dari reference model (122k samples)
-    this.weights = [42.814244663382595, 0, 0, 0];
-    this.bias = -5148.556034482759;
-    this.featureCount = 4;
+    // Trained params dari By RB V2 (122k samples, R²=0.9667)
+    this.weights = [53.59165690364937, 4.855243663753777, 151.70580576053723, 5.812629685473508, 41.67079154200302];
+    this.bias = 0.0;
+    this.featureCount = 5;
+    // Standardization params
+    this.xMean = [131.00384615384615, 11.138461538461538, 0.6931781744396154, 0.5826941888713614, 0.03461538461538462];
+    this.xStd = [1.8260888783725584, 1.6040997770321255, 0.34725834808347206, 0.24368656184215137, 0.18280360982024998];
+    this.yMean = 1134.901007875301;
+    this.alpha = 0.5;
+    this.trained = true;
   }
 
   predict(features) {
-    if (features.length < this.featureCount) return 0;
-    let sum = this.bias;
+    if (features.length < this.featureCount) {
+      // Fallback to base model (4 features)
+      return 42.814244663382595 * features[0] + (-5148.556034482759);
+    }
+    // Standardized prediction: sum(w_i * (x_i - mu_i) / sigma_i) + y_mean
+    let sum = this.yMean;
     for (let i = 0; i < this.featureCount; i++)
-      sum += this.weights[i] * features[i];
-    return sum;
+      sum += this.weights[i] * (features[i] - this.xMean[i]) / this.xStd[i];
+    return sum + this.bias;
   }
 }
 
@@ -142,7 +153,51 @@ export class AwbMlEngine {
     this.history = []; // ValidAwbRecord[]
     this._awbSet = null;
     this._awbSetDirty = true;
-    this.dataPath = null;
+    this._seeded = false;
+  }
+
+  // ── Seed from By RB model data ──
+  seedFromModel(seedData) {
+    if (!seedData || this._seeded) return;
+
+    // Seed RidgeModel
+    if (seedData.ridge) {
+      const r = seedData.ridge;
+      this.midModel.weights = r.weights || this.midModel.weights;
+      this.midModel.bias = r.bias ?? this.midModel.bias;
+      this.midModel.featureCount = r.n_feat || this.midModel.featureCount;
+      this.midModel.xMean = r.x_mean || this.midModel.xMean;
+      this.midModel.xStd = r.x_std || this.midModel.xStd;
+      this.midModel.yMean = r.y_mean ?? this.midModel.yMean;
+      this.midModel.alpha = r.alpha ?? this.midModel.alpha;
+      this.midModel.trained = true;
+    }
+
+    // Seed City KDE
+    if (seedData.city_kde) {
+      for (const [city, data] of Object.entries(seedData.city_kde)) {
+        const kde = new CityAreaKde();
+        kde.cityKey = city;
+        kde.areas = data.areas || [];
+        kde.counts = data.counts || [];
+        kde.bandwidth = data.bandwidth || 6.0;
+        this.cityKdes[city] = kde;
+      }
+    }
+
+    // Seed Dest Cache
+    if (seedData.dest_cache) {
+      for (const [key, data] of Object.entries(seedData.dest_cache)) {
+        const entry = new DestCacheEntry();
+        entry.cityKey = key;
+        entry.area = data.area || 0;
+        entry.hitCount = data.hit_count || 1;
+        entry.lastSeen = new Date().toISOString();
+        this.destCache[key] = entry;
+      }
+    }
+
+    this._seeded = true;
   }
 
   // ── Predict MID ──
@@ -155,6 +210,19 @@ export class AwbMlEngine {
     const dow = date.getDay();
     const isWeekend = (dow === 0 || dow === 6) ? 1.0 : 0.0;
 
+    if (this.midModel.trained) {
+      // 5-feature model with standardization
+      const features = [dayOffset, hour, dow, isWeekend, 0]; // 5th feature: 0 (mean)
+      let baseMid = Math.round(this.midModel.predict(features));
+
+      if (timeRange) {
+        const midFraction = (timeRange.start + timeRange.end) / 2.0 / 1440.0;
+        baseMid += Math.round(midFraction * 75.0);
+      }
+      return Math.max(0, Math.min(9999, baseMid));
+    }
+
+    // Fallback: base model (4 features, no standardization)
     const features = [dayOffset, hour, dow, isWeekend];
     let baseMid = Math.round(this.midModel.predict(features));
 
@@ -162,7 +230,6 @@ export class AwbMlEngine {
       const midFraction = (timeRange.start + timeRange.end) / 2.0 / 1440.0;
       baseMid += Math.round(midFraction * 75.0);
     }
-
     return Math.max(0, Math.min(9999, baseMid));
   }
 
@@ -172,6 +239,14 @@ export class AwbMlEngine {
 
   // ── Adaptive ceiling ──
   getAreaCeiling(cityKey = null) {
+    // If we have KDE data for this city, use its max area + buffer
+    if (cityKey && this.cityKdes[cityKey]) {
+      const kde = this.cityKdes[cityKey];
+      if (kde.areas.length > 0) {
+        const maxArea = Math.max(...kde.areas);
+        return Math.min(9999, Math.round(maxArea * 1.25));
+      }
+    }
     if (!this.history || this.history.length < 20) return 9999;
     const areas = this.history.filter(h => h.area > 0).map(h => h.area).sort((a, b) => a - b);
     if (areas.length < 20) return 9999;
@@ -299,10 +374,11 @@ export class AwbMlEngine {
     const weights = solveLinear(XtX, Xty, k);
     if (weights) {
       this.midModel.weights = weights;
+      this.midModel.featureCount = k;
+      this.midModel.trained = true;
       const xMean = Array(k).fill(0);
       for (let j = 0; j < k; j++) xMean[j] = X.reduce((s, r) => s + r[j], 0) / n;
       this.midModel.bias = y.reduce((a, b) => a + b, 0) / n - weights.reduce((s, w, j) => s + w * xMean[j], 0);
-      this.midModel.featureCount = k;
     }
   }
 
@@ -317,16 +393,30 @@ export class AwbMlEngine {
   save() {
     try {
       const data = {
-        midModel: this.midModel,
+        midModel: {
+          weights: this.midModel.weights,
+          bias: this.midModel.bias,
+          featureCount: this.midModel.featureCount,
+          xMean: this.midModel.xMean,
+          xStd: this.midModel.xStd,
+          yMean: this.midModel.yMean,
+          alpha: this.midModel.alpha,
+          trained: this.midModel.trained,
+        },
         varianceModel: { dailyRanges: this.varianceModel.dailyRanges },
         cityKdes: Object.fromEntries(
           Object.entries(this.cityKdes).map(([k, v]) => [k, {
             cityKey: v.cityKey, areas: v.areas, counts: v.counts, bandwidth: v.bandwidth
           }])
         ),
-        destCache: this.destCache,
+        destCache: Object.fromEntries(
+          Object.entries(this.destCache).map(([k, v]) => [k, {
+            cityKey: v.cityKey, area: v.area, hitCount: v.hitCount, lastSeen: v.lastSeen
+          }])
+        ),
         maxAreaEverSeen: this.maxAreaEverSeen,
         history: this.history,
+        _seeded: this._seeded,
       };
       localStorage.setItem("awb_ml_model", JSON.stringify(data));
     } catch (e) { /* localStorage might be full */ }
@@ -338,7 +428,16 @@ export class AwbMlEngine {
       if (!raw) return new AwbMlEngine();
       const data = JSON.parse(raw);
       const engine = new AwbMlEngine();
-      if (data.midModel) Object.assign(engine.midModel, data.midModel);
+      if (data.midModel) {
+        engine.midModel.weights = data.midModel.weights || engine.midModel.weights;
+        engine.midModel.bias = data.midModel.bias ?? engine.midModel.bias;
+        engine.midModel.featureCount = data.midModel.featureCount || engine.midModel.featureCount;
+        engine.midModel.xMean = data.midModel.xMean || engine.midModel.xMean;
+        engine.midModel.xStd = data.midModel.xStd || engine.midModel.xStd;
+        engine.midModel.yMean = data.midModel.yMean ?? engine.midModel.yMean;
+        engine.midModel.alpha = data.midModel.alpha ?? engine.midModel.alpha;
+        engine.midModel.trained = data.midModel.trained ?? false;
+      }
       if (data.varianceModel) engine.varianceModel.dailyRanges = data.varianceModel.dailyRanges || [];
       if (data.cityKdes) {
         for (const [k, v] of Object.entries(data.cityKdes)) {
@@ -347,13 +446,38 @@ export class AwbMlEngine {
           engine.cityKdes[k] = kde;
         }
       }
-      if (data.destCache) engine.destCache = data.destCache;
+      if (data.destCache) {
+        for (const [k, v] of Object.entries(data.destCache)) {
+          const entry = new DestCacheEntry();
+          Object.assign(entry, v);
+          engine.destCache[k] = entry;
+        }
+      }
       if (data.maxAreaEverSeen != null) engine.maxAreaEverSeen = data.maxAreaEverSeen;
       if (data.history) engine.history = data.history;
+      engine._seeded = data._seeded || false;
       return engine;
     } catch (e) {
       return new AwbMlEngine();
     }
+  }
+
+  // ── Async: load seed data from JSON ──
+  static async loadWithSeed(seedUrl = "awb_model_seed.json") {
+    let engine = AwbMlEngine.load();
+    if (engine._seeded) return engine;
+
+    try {
+      const resp = await fetch(seedUrl);
+      if (resp.ok) {
+        const seedData = await resp.json();
+        engine.seedFromModel(seedData);
+        engine.save();
+      }
+    } catch (e) {
+      // Seed not available, use base model
+    }
+    return engine;
   }
 
   // ── Seed from JSONL (array of {awb, date, destination, mid, area}) ──
