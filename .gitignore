@@ -6,3 +6,4 @@ AWBDesktop/
 *.pkl
 .vercel
 .env*
+!.env.example

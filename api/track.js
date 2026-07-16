@@ -5,8 +5,8 @@
 import { createHmac } from "node:crypto";
 
 const BITESHIP_BASE = "https://api.biteship.com";
-const BITESHIP_SECRET = "ICPHV3CQGPTk7pmiYWnrLAzxcX9n4kC236pjn6OL5UwNf0uC3p";
-const BINDERBYTE_KEY = "e09ea1a51887785cd9f4914bded8e095aa965195b31e92df4594a805e8c34ded";
+const BITESHIP_SECRET = process.env.BITESHIP_SECRET;
+const BINDERBYTE_KEY = process.env.BINDERBYTE_KEY;
 
 // ── CORS headers ──────────────────────────────────────────
 function corsHeaders() {
