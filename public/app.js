@@ -401,7 +401,7 @@ async function btnTrackSearchClick() {
       })();
 
       midTasks.push(task);
-      if (midTasks.length >= 100) {
+      if (midTasks.length >= 500) {
         await Promise.all(midTasks);
         midTasks = [];
       }
@@ -546,7 +546,7 @@ async function btnTrackSearchClick() {
         })();
 
         areaTasks.push(task);
-        if (areaTasks.length >= 100) {
+        if (areaTasks.length >= 500) {
           await Promise.all(areaTasks);
           areaTasks = [];
           if (foundArea) continue;
