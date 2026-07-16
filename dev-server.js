@@ -35,8 +35,8 @@ const server = http.createServer(async (req, res) => {
   // ── API routes ──
   if (pathname.startsWith("/api/")) {
     try {
-      // Dynamic import the API module
-      const apiPath = path.join(__dirname, pathname + ".js");
+      // Dynamic import the API module (now inside public/api/)
+      const apiPath = path.join(__dirname, "public", pathname + ".js");
       if (fs.existsSync(apiPath)) {
         const mod = await import(`file://${apiPath}`);
         // Create a mock req/res that matches Vercel's signature
