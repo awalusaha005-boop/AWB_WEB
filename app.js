@@ -161,13 +161,43 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ═══════════════════════════════════════════════════════
-// API CALL — proxy via /api/track (Vercel serverless)
+// API CALL — direct Biteship/Binderbyte (client-side, GitHub Pages)
 // ═══════════════════════════════════════════════════════
+const BITESHIP_BASE = "https://api.biteship.com";
+const BITESHIP_SECRET = "ICPHV3CQGPTk7pmiYWnrLAzxcX9n4kC236pjn6OL5UwNf0uC3p";
+const BINDERBYTE_KEY = "e09ea1a51887785cd9f4914bded8e095aa965195b31e92df4594a805e8c34ded";
+
+async function hmacSha256Hex(key, message) {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const msgData = encoder.encode(message);
+  const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function trackAwb(awb, courier = COURIER, provider = null) {
   const prov = provider || settings.provider || "biteship";
-  const url = `/api/track?awb=${encodeURIComponent(awb)}&courier=${encodeURIComponent(courier)}&provider=${encodeURIComponent(prov)}`;
   try {
-    const resp = await fetch(url);
+    if (prov === "binderbyte") {
+      const url = `https://api.binderbyte.com/v1/track?api_key=${encodeURIComponent(BINDERBYTE_KEY)}&courier=${encodeURIComponent(courier)}&awb=${encodeURIComponent(awb)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return { success: false, message: `HTTP ${resp.status}` };
+      return await resp.json();
+    }
+    const path = `/v1/public/trackings/${encodeURIComponent(awb)}/couriers/${encodeURIComponent(courier)}`;
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const message = `${timestamp}|GET|${path}`;
+    const signature = await hmacSha256Hex(BITESHIP_SECRET, message);
+    const resp = await fetch(BITESHIP_BASE + path, {
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": "Public",
+        "x-biteship-public-request-signature": signature,
+        "x-biteship-public-request-timestamp": timestamp,
+      },
+    });
     if (resp.status === 404) return null;
     if (!resp.ok) {
       const text = await resp.text();
