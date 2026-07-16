@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SiCepat Jinxpro — AWB Tracker</title>
   <link rel="icon" href="New-AWB.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#060b14">
+  <link rel="apple-touch-icon" href="icon-192x192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -219,5 +222,14 @@
 </div>
 
 <script type="module" src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(reg => console.log('SW registered'))
+        .catch(err => console.log('SW failed', err));
+    });
+  }
+</script>
 </body>
 </html>
