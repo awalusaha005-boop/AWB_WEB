@@ -449,7 +449,7 @@ button, input, textarea, select {
 /* ═══ Stats Grid ═══ */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
@@ -457,10 +457,10 @@ button, input, textarea, select {
   background: rgba(15, 23, 38, 0.9);
   border: none;
   border-radius: 8px;
-  padding: 18px 20px;
+  padding: 14px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   transition: all var(--transition);
   position: relative;
   overflow: hidden;
@@ -468,9 +468,8 @@ button, input, textarea, select {
 .stat-card::before {
   content: '';
   position: absolute;
-  left: 0; top: 8px; bottom: 8px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
+  top: 0; left: 0; right: 0;
+  height: 3px;
   transition: all var(--transition);
 }
 .stat-card:hover {
@@ -479,10 +478,9 @@ button, input, textarea, select {
   background: rgba(17, 25, 42, 0.95);
 }
 
-.stat-cyan::before { background: var(--cyan); box-shadow: 0 0 12px var(--cyan-glow); }
-.stat-green::before { background: var(--green); box-shadow: 0 0 12px var(--green-glow); }
+.stat-cyan::before { background: var(--cyan); box-shadow: 0 2px 12px var(--cyan-glow); }
+.stat-green::before { background: var(--green); box-shadow: 0 2px 12px var(--green-glow); }
 .stat-red::before { background: var(--red); }
-.stat-amber::before { background: var(--amber); box-shadow: 0 0 12px var(--amber-glow); }
 
 .stat-label {
   font-size: 10.5px;
@@ -846,15 +844,109 @@ button, input, textarea, select {
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 
+/* ═══ Mobile hamburger ═══ */
+.menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--cyan);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.log-tab {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 0;
+}
+.log-tab-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 12px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.log-tab-dot {
+  width: 8px; height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--green-glow);
+}
+.log-tab-panel {
+  display: none;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.log-tab-panel.show { display: block; }
+.log-tab-panel .log-body {
+  font-size: 10px;
+  padding: 12px;
+  max-height: 40vh;
+}
+
 /* ═══ Responsive ═══ */
 @media (max-width: 1024px) {
   .main-grid { grid-template-columns: 260px 1fr 300px; }
 }
 
 @media (max-width: 768px) {
-  .main-grid { grid-template-columns: 1fr; }
-  .sidebar, .log-panel { display: none; }
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+  body { overflow: auto; height: auto; }
+  .main-grid {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+  }
+  .topbar { padding: 0 14px; }
+  .app-badge { display: none; }
+  .menu-toggle { display: block; }
+
+  .sidebar {
+    display: block;
+    position: fixed;
+    top: 52px; left: 0; bottom: 0; width: 280px;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform var(--transition-slow);
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0; z-index: 40;
+    background: rgba(0,0,0,0.5);
+  }
+  .sidebar-overlay.show { display: block; }
+
+  .content { flex: none; padding-bottom: 50px; }
+  .content-header { padding: 14px 14px 10px; }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat-card { padding: 10px 12px; }
+  .stat-value { font-size: 22px; }
+  .results-scroll { padding: 0 14px 14px; }
+
+  .log-panel { display: none; }
+  .log-tab { display: block; }
+}
+
+/* ═══ Desktop: hide mobile elements ═══ */
+@media (min-width: 769px) {
+  .log-tab { display: none !important; }
 }
 
 /* ═══════════════════════════════════════════════════════

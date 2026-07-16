@@ -146,6 +146,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btnSettingsCancel").onclick = closeSettings;
   document.getElementById("chkHideAwbColumn").onchange = chkHideAwbChange;
 
+  // Mobile: hamburger menu
+  document.getElementById("menuToggle").onclick = () => {
+    document.getElementById("sidebar").classList.toggle("open");
+    document.getElementById("sidebarOverlay").classList.toggle("show");
+  };
+  document.getElementById("sidebarOverlay").onclick = () => {
+    document.getElementById("sidebar").classList.remove("open");
+    document.getElementById("sidebarOverlay").classList.remove("show");
+  };
+
+  // Mobile: log tab
+  document.getElementById("logTabBtn").onclick = () => {
+    document.getElementById("logTabPanel").classList.toggle("show");
+  };
+
   // Restore UI preferences
   document.getElementById("chkHideAwbColumn").checked = settings.hideAwbColumn;
 
@@ -993,9 +1008,6 @@ function updateStats(duration) {
   const fail = results.length - success;
   document.getElementById("txtBerhasil").textContent = success;
   document.getElementById("txtGagal").textContent = fail;
-  const rate = results.length === 0 ? 0 : Math.round(success / results.length * 100);
-  document.getElementById("txtSuccessRate").textContent = rate + "%";
-  document.getElementById("txtDuration").textContent = formatDuration(duration);
 }
 
 function formatDuration(ms) {
@@ -1066,6 +1078,13 @@ function flushLogQueue() {
   }
 
   body.scrollTop = body.scrollHeight;
+
+  // Sync to mobile log tab
+  const tab = document.getElementById("logTabBody");
+  if (tab) {
+    tab.textContent = body.textContent;
+    tab.scrollTop = tab.scrollHeight;
+  }
 }
 
 // ═══════════════════════════════════════════════════════

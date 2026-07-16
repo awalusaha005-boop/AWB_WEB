@@ -58,6 +58,7 @@
     <span class="app-badge">AUTOMATED AWB TRACKER · V2.0 WEB</span>
   </div>
   <div class="topbar-right">
+    <button id="menuToggle" class="menu-toggle" title="Menu">☰</button>
     <span id="licenseBadge" class="license-badge">⏳ ...</span>
     <button id="btnReset" class="btn-icon" title="Reset">↻</button>
     <button id="btnSettings" class="btn-icon" title="Settings">⚙</button>
@@ -154,14 +155,6 @@
           <span class="stat-label">Gagal</span>
           <span class="stat-value" id="txtGagal">0</span>
         </div>
-        <div class="stat-card stat-cyan">
-          <span class="stat-label">Success Rate</span>
-          <span class="stat-value" id="txtSuccessRate">0%</span>
-        </div>
-        <div class="stat-card stat-amber">
-          <span class="stat-label">Durasi</span>
-          <span class="stat-value" id="txtDuration">00:00:00</span>
-        </div>
       </div>
     </div>
 
@@ -186,6 +179,19 @@
     </div>
   </aside>
 
+</div>
+
+<!-- ═══ Mobile overlay ═══ -->
+<div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+<!-- ═══ Mobile log tab ═══ -->
+<div id="logTab" class="log-tab">
+  <button id="logTabBtn" class="log-tab-btn">
+    <span class="log-tab-dot"></span> Activity Log
+  </button>
+  <div id="logTabPanel" class="log-tab-panel">
+    <div class="log-body" id="logTabBody"></div>
+  </div>
 </div>
 
 <!-- ═══ SETTINGS MODAL ═══ -->
