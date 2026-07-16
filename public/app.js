@@ -328,7 +328,7 @@ async function btnTrackSearchClick() {
         if (isValidBiteshipResult(probe) && dateMatches(probe, tgl, timeRange)) {
           validCandidate = true;
           bestCandidateMid = cm;
-          log(`Kandidat MID ${cm} cocok tanggal target, lewati uji MID.`, "success");
+          log(`Kandidat MID ${cm} cocok tanggal target, prioritas AREA dinaikkan.`, "success");
           break;
         }
       }
@@ -339,16 +339,16 @@ async function btnTrackSearchClick() {
         candidateMids = candidateMids.filter(m => m !== bestCandidateMid);
         candidateMids.unshift(bestCandidateMid);
       }
-    } else if (!foundMid) {
-      log("Fase 1: mencari MID yang cocok tanggal/jam...", "system", false);
-      log(`Titik pusat MID (ML): ${midOrder[0]} | prioritas pindai di sekitar titik pusat`, "system", false);
     }
 
-    // ── Phase 1: MID scanning ──
+    // ── Phase 1: MID scanning (always run, candidates are just hints) ──
+    log("Fase 1: mencari MID yang cocok tanggal/jam...", "system", false);
+    log(`Titik pusat MID (ML): ${midOrder[0]} | prioritas pindai di sekitar titik pusat`, "system", false);
+
     const midSemaphore = { current: 0, max: maxConcurrent };
     const midLock = { found: false };
     let midTasks = [];
-    const midsToScan = candidateMids.length > 0 ? [] : midOrder;
+    const midsToScan = midOrder;
 
     for (const midStr of midsToScan) {
       if (cts.cancelled || foundMid) break;
@@ -409,7 +409,13 @@ async function btnTrackSearchClick() {
     if (midTasks.length > 0) await Promise.all(midTasks);
 
     // ── Build candidates for AREA phase ──
-    let fallbackMids = candidateMids.length > 0 ? candidateMids : buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, 32);
+    let fallbackMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, 32);
+    // Also prepend any candidate MID that matched the date (if found)
+    if (candidateMids.length > 0) {
+      for (const cm of candidateMids) {
+        if (!fallbackMids.includes(cm)) fallbackMids.unshift(cm);
+      }
+    }
     if (fallbackMids.length === 0) {
       log("Tidak ada kandidat MID cadangan. Coba perlebar rentang jam.", "error");
       deleteProgress();
