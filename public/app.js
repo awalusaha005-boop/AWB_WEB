@@ -495,6 +495,7 @@ async function btnTrackSearchClick() {
           hideNextButton();
           if (cts.cancelled) break;
           foundArea = null;
+          foundAreaLock.found = false; // Reset for next match auto-pause
         }
         if (foundArea) continue; // re-check after drain — skip if foundArea survived
         if (checkedAreas.has(areaStr)) continue;
