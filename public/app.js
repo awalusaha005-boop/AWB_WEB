@@ -538,11 +538,12 @@ async function btnTrackSearchClick() {
               foundArea = areaStr;
               matchedAwb = awb;
               matchedResult = result;
+              // Only show first match, then auto-pause
+              results.push(createBiteshipRow(awb, result, tgl, timeRange));
+              renderResults();
               log(`AREA valid: ${awb} | ${displayDate} | ${dest} | tujuan=OK | tanggal=OK | baru cetak=OK | COCOK | info=${getBiteshipDiag(result)}`, "success", false);
             }
-
-            results.push(createBiteshipRow(awb, result, tgl, timeRange));
-            renderResults();
+            // Skip adding results for subsequent matches (shown after Next)
           } catch (err) {
             areaFailed++;
             log(`AREA ${awb} gagal: ${err.message}`, "error");
