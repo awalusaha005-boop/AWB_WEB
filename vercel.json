@@ -1,4 +1,9 @@
 {
   "version": 2,
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "@vercel/node@3"
+    }
+  }
 }
