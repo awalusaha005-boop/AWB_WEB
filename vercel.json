@@ -1,11 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "api/**/*.js", "use": "@vercel/node" },
-    { "src": "public/**", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/public/$1" }
-  ]
+  "outputDirectory": "public",
+  "functions": {
+    "public/api/test.js": { "runtime": "@vercel/node@3" },
+    "public/api/track.js": { "runtime": "@vercel/node@3" }
+  }
 }
