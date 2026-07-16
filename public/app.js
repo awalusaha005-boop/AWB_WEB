@@ -161,7 +161,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ═══════════════════════════════════════════════════════
-// API CALL
+// API CALL — proxy via /api/track (Vercel serverless)
 // ═══════════════════════════════════════════════════════
 async function trackAwb(awb, courier = COURIER, provider = null) {
   const prov = provider || settings.provider || "biteship";
