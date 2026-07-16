@@ -212,34 +212,6 @@
   </div>
 </div>
 
-<script type="module">
-import { initAuth, signOut, isAllowed, getUser } from "./auth.js";
-
-// ── Auth gate: redirect to login if not authenticated ──
-initAuth().then((user) => {
-  if (!user || !isAllowed(user)) {
-    window.location.href = "/login.html";
-    return;
-  }
-  // Show user info in topbar
-  updateUserDisplay(user);
-});
-
-function updateUserDisplay(user) {
-  const badge = document.getElementById("licenseBadge");
-  if (badge && user) {
-    badge.textContent = user.displayName || user.email.split("@")[0];
-    badge.title = user.email;
-    badge.style.cursor = "pointer";
-    badge.onclick = async () => {
-      if (confirm("Logout dari " + user.email + "?")) {
-        await signOut();
-        window.location.href = "/login.html";
-      }
-    };
-  }
-}
-</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

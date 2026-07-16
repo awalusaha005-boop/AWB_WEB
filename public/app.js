@@ -1065,8 +1065,6 @@ function flushLogQueue() {
 // ═══════════════════════════════════════════════════════
 function updateLicenseDisplay() {
   const el = document.getElementById("licenseBadge");
-  // Don't overwrite if user is logged in (email shown by auth module)
-  if (el && el.textContent && el.textContent.includes("@")) return;
   if (settings.provider === "binderbyte") {
     el.textContent = "📡 Binderbyte";
     el.style.color = "#06d6e8";
