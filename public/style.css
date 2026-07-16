@@ -308,7 +308,9 @@ button, input, textarea, select {
   grid-template-columns: 300px 1fr 380px;
   flex: 1;
   overflow: hidden;
+  min-width: 0;
 }
+.main-grid > * { min-width: 0; }
 
 /* ═══ Sidebar ═══ */
 .sidebar {
@@ -901,9 +903,31 @@ button, input, textarea, select {
 
 /* ═══ Responsive ═══ */
 @media (max-width: 1024px) {
-  .main-grid { grid-template-columns: 260px 1fr 300px; }
+  .main-grid { grid-template-columns: 230px 1fr 260px; }
+  .sidebar-section { padding: 14px 12px 16px; }
+  .log-header { padding: 12px; }
+  .log-body { font-size: 9.5px; padding: 10px; }
+  .content-header { padding: 16px 16px 12px; }
+  .results-scroll { padding: 0 16px 16px; }
 }
 
+/* Tablet: 2-row — sidebar+content top, log full-width bottom */
+@media (max-width: 900px) {
+  .main-grid {
+    grid-template-columns: 220px 1fr;
+    grid-template-rows: 1fr auto;
+  }
+  .log-panel {
+    grid-column: 1 / -1;
+    max-height: 220px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .log-body { max-height: 160px; }
+  .stats-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+}
+
+/* Phone: hamburger sidebar + bottom log tab */
 @media (max-width: 768px) {
   body { overflow: auto; height: auto; }
   .main-grid {
