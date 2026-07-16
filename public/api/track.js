@@ -2,6 +2,8 @@
 // CORS proxy + HMAC signer untuk Biteship & Binderbyte API
 // Dipanggil sebagai: /api/track?awb=004612348765&courier=sicepat&provider=biteship
 
+import { createHmac } from "node:crypto";
+
 const BITESHIP_BASE = "https://api.biteship.com";
 const BITESHIP_SECRET = "ICPHV3CQGPTk7pmiYWnrLAzxcX9n4kC236pjn6OL5UwNf0uC3p";
 const BINDERBYTE_KEY = "e09ea1a51887785cd9f4914bded8e095aa965195b31e92df4594a805e8c34ded";
@@ -17,25 +19,14 @@ function corsHeaders() {
 }
 
 // ── HMAC-SHA256 signature untuk Biteship ──────────────────
-// Bisa pakai Web Crypto API (available di Vercel runtime)
-async function generateBiteshipSignature(method, path) {
+// Pakai node:crypto createHmac (lebih reliable dari Web Crypto di Vercel)
+function generateBiteshipSignature(method, path) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const message = `${timestamp}|${method}|${path}`;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(BITESHIP_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return {
-    signature: Array.from(new Uint8Array(sig))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join(""),
-    timestamp,
-  };
+  const signature = createHmac("sha256", BITESHIP_SECRET)
+    .update(message)
+    .digest("hex");
+  return { signature, timestamp };
 }
 
 // ── Rotating mobile UA ────────────────────────────────────
@@ -58,7 +49,7 @@ function buildMobileUa() {
 async function trackBiteship(awb, courier) {
   const path = `/v1/public/trackings/${encodeURIComponent(awb)}/couriers/${encodeURIComponent(courier)}`;
   const url = BITESHIP_BASE + path;
-  const { signature, timestamp } = await generateBiteshipSignature("GET", path);
+  const { signature, timestamp } = generateBiteshipSignature("GET", path);
 
   const headers = {
     "Accept": "application/json",
