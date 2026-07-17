@@ -740,6 +740,35 @@ button, input, textarea, select {
   margin-bottom: 4px;
 }
 
+.log-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.log-action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 7px;
+  transition: all var(--transition);
+  line-height: 1;
+}
+.log-action-btn:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: var(--cyan-dim);
+}
+.log-action-btn.active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: var(--cyan-dim);
+  box-shadow: 0 0 6px var(--cyan-glow);
+}
+
 .log-dot {
   width: 8px;
   height: 8px;
@@ -911,24 +940,8 @@ button, input, textarea, select {
   .results-scroll { padding: 0 16px 16px; }
 }
 
-/* Tablet: 2-row — sidebar+content top, log full-width bottom */
+/* Tablet / Small screen: hamburger menu + content full-width + log panel bottom */
 @media (max-width: 900px) {
-  .main-grid {
-    grid-template-columns: 220px 1fr;
-    grid-template-rows: 1fr auto;
-  }
-  .log-panel {
-    grid-column: 1 / -1;
-    max-height: 220px;
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
-  .log-body { max-height: 160px; }
-  .stats-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
-}
-
-/* Phone: hamburger sidebar + bottom log tab */
-@media (max-width: 768px) {
   body { overflow: auto; height: auto; }
   .main-grid {
     display: flex;
@@ -939,6 +952,7 @@ button, input, textarea, select {
   .app-badge { display: none; }
   .menu-toggle { display: block; }
 
+  /* Sidebar → hamburger overlay */
   .sidebar {
     display: block;
     position: fixed;
@@ -957,19 +971,33 @@ button, input, textarea, select {
   }
   .sidebar-overlay.show { display: block; }
 
-  .content { flex: none; padding-bottom: 50px; }
+  /* Content full-width */
+  .content { flex: none; }
   .content-header { padding: 14px 14px 10px; }
   .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .stat-card { padding: 10px 12px; }
   .stat-value { font-size: 22px; }
   .results-scroll { padding: 0 14px 14px; }
 
+  /* Log panel → bottom collapsible */
+  .log-panel {
+    max-height: 220px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .log-body { max-height: 160px; }
+}
+
+/* Phone: log becomes bottom tab (more compact) */
+@media (max-width: 768px) {
   .log-panel { display: none; }
   .log-tab { display: block; }
+  .content { padding-bottom: 50px; }
 }
 
 /* ═══ Desktop: hide mobile elements ═══ */
-@media (min-width: 769px) {
+@media (min-width: 901px) {
+  .menu-toggle { display: none !important; }
   .log-tab { display: none !important; }
 }
 
@@ -1229,7 +1257,8 @@ button, input, textarea, select {
 
 .login-title {
   font-size: 20px; font-weight: 800; letter-spacing: 2px;
-  color: var(--text-primary); margin-bottom: 6px;
+  color: var(--cyan); margin-bottom: 6px;
+  text-shadow: 0 0 20px rgba(6,214,232,0.3);
 }
 .login-subtitle {
   font-size: 12px; color: var(--text-secondary); margin-bottom: 28px;

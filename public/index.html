@@ -72,7 +72,7 @@
 <div class="main-grid">
 
   <!-- ═══ LEFT SIDEBAR ═══ -->
-  <aside class="sidebar">
+  <aside id="sidebar" class="sidebar">
     <div class="sidebar-scroll">
 
       <!-- Section 1: Target Pencarian (Resi) -->
@@ -101,7 +101,8 @@
         <p class="field-hint">contoh: 2026-07-11</p>
 
         <label class="field-label">KOTA TUJUAN</label>
-        <input id="txtKota" type="text" class="field-input" placeholder="Cengkareng, Jakarta Barat" title="Kecamatan, Kota">
+        <input id="txtKota" type="text" class="field-input" placeholder="Cengkareng, Jakarta Barat" title="Kecamatan, Kota" list="kotaList" autocomplete="off">
+        <datalist id="kotaList"></datalist>
         <p class="field-hint">contoh: Cengkareng, Jakarta Barat</p>
 
         <label class="checkbox-row">
@@ -173,8 +174,12 @@
       <div class="log-title-row">
         <span class="log-dot"></span>
         <span class="log-title">ACTIVITY LOG</span>
+        <div class="log-actions">
+          <button id="btnClearLog" class="log-action-btn" title="Clear Log">🗑</button>
+          <button id="btnMinimalLog" class="log-action-btn" title="Minimal Mode (hanya Match/Error)">📋</button>
+        </div>
       </div>
-      <p class="log-subtitle">Realtime output proses AWB</p>
+      <p class="log-subtitle" id="logSubtitle">Realtime output proses AWB</p>
     </div>
     <hr class="section-divider">
     <div class="log-body" id="logBody">

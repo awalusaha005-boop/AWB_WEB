@@ -135,6 +135,7 @@ async function initApp() {
   ml = await AwbMlEngine.loadWithSeed();
   log("Siap. Kurir: " + COURIER, "info");
   log(`Mesin ML dimuat: ${ml.history.length} data | ${Object.keys(ml.cityKdes).length} kota KDE | batas AREA=${ml.getAreaCeiling()}`, "system");
+  populateKotaAutocomplete();
   checkProgressOnStartup();
 
   // Update license badge with username
@@ -167,6 +168,10 @@ async function initApp() {
   document.getElementById("logTabBtn").onclick = () => {
     document.getElementById("logTabPanel").classList.toggle("show");
   };
+
+  // Log controls
+  document.getElementById("btnClearLog").onclick = clearLog;
+  document.getElementById("btnMinimalLog").onclick = toggleMinimalLog;
 
   // Restore UI preferences
   document.getElementById("chkHideAwbColumn").checked = settings.hideAwbColumn;
@@ -1057,11 +1062,66 @@ function waitForNext() {
 // LOG SYSTEM — text buffer, zero DOM alloc per entry
 // ═══════════════════════════════════════════════════════
 const LOG_MAX_CHARS = 32000;
+let _logMinimal = false; // Minimal mode: only show match/error
+let _logAllLines = [];  // Full log buffer for minimal mode toggle
 
 function log(msg, type = "info", writeToLog = true) {
   const timestamp = new Date().toTimeString().substring(0, 8);
-  logQueue.push(`[${timestamp}] ${msg}\n`);
+  const line = `[${timestamp}] ${msg}\n`;
+  _logAllLines.push({ line, type });
+  // Cap full buffer
+  if (_logAllLines.length > 2000) _logAllLines = _logAllLines.slice(-1000);
+
+  if (_logMinimal && !isMinimalType(type)) return;
+
+  logQueue.push(line);
   if (!logRafId) logRafId = requestAnimationFrame(flushLogQueue);
+}
+
+function isMinimalType(type) {
+  return type === "success" || type === "warning" || type === "error";
+}
+
+function clearLog() {
+  _logAllLines = [];
+  logQueue = [];
+  const body = document.getElementById("logBody");
+  const tab = document.getElementById("logTabBody");
+  if (body) body.textContent = "";
+  if (tab) tab.textContent = "";
+  log("Log dibersihkan.", "system");
+}
+
+function toggleMinimalLog() {
+  _logMinimal = !_logMinimal;
+  const btn = document.getElementById("btnMinimalLog");
+  const subtitle = document.getElementById("logSubtitle");
+  if (_logMinimal) {
+    btn.classList.add("active");
+    if (subtitle) subtitle.textContent = "Mode minimal: hanya Match/Error";
+    // Rebuild log from full buffer
+    rebuildLogFromBuffer();
+  } else {
+    btn.classList.remove("active");
+    if (subtitle) subtitle.textContent = "Realtime output proses AWB";
+    rebuildLogFromBuffer();
+  }
+}
+
+function rebuildLogFromBuffer() {
+  const body = document.getElementById("logBody");
+  const tab = document.getElementById("logTabBody");
+  if (!body) return;
+  const lines = _logMinimal
+    ? _logAllLines.filter(l => isMinimalType(l.type)).map(l => l.line)
+    : _logAllLines.map(l => l.line);
+  const text = lines.join("");
+  body.textContent = text;
+  body.scrollTop = body.scrollHeight;
+  if (tab) {
+    tab.textContent = text;
+    tab.scrollTop = tab.scrollHeight;
+  }
 }
 
 function flushLogQueue() {
@@ -1107,6 +1167,41 @@ function updateLicenseDisplay() {
       location.reload();
     }
   };
+}
+
+// ═══════════════════════════════════════════════════════
+// KOTA AUTOCOMPLETE — populate datalist from ML data
+// ═══════════════════════════════════════════════════════
+function populateKotaAutocomplete() {
+  const datalist = document.getElementById("kotaList");
+  if (!datalist || !ml) return;
+
+  const suggestions = new Set();
+
+  // 1. From cityKdes keys (normalized — convert to Title Case)
+  for (const key of Object.keys(ml.cityKdes)) {
+    const title = key.replace(/\b\w/g, c => c.toUpperCase());
+    suggestions.add(title);
+  }
+
+  // 2. From history destinations (unique full strings)
+  const seenDest = new Set();
+  for (const h of ml.history) {
+    if (!h.destination || seenDest.has(h.destination)) continue;
+    seenDest.add(h.destination);
+    // Extract city part
+    const parts = h.destination.split(",").map(s => s.trim());
+    if (parts.length >= 2) {
+      suggestions.add(parts[parts.length - 1]); // City only
+    }
+    suggestions.add(h.destination); // Full "Kecamatan, Kota"
+  }
+
+  // Build datalist options
+  const sorted = [...suggestions].sort();
+  datalist.innerHTML = sorted.map(s => `<option value="${s.replace(/"/g, "&quot;")}">`).join("");
+
+  log(`Autocomplete kota: ${sorted.length} saran dimuat.`, "system");
 }
 
 // ═══════════════════════════════════════════════════════
