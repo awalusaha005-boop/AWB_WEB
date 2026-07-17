@@ -23,12 +23,19 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
-    )
+    (async () => {
+      // Clean old caches
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
+      // Claim all clients
+      await self.clients.claim();
+      // Reload all open tabs so they get fresh content
+      const clients = await self.clients.matchAll({ type: 'window' });
+      for (const client of clients) {
+        client.navigate(client.url);
+      }
+    })()
   );
-  // Claim all clients immediately so new SW controls pages
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
