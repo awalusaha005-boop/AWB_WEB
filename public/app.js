@@ -19,6 +19,8 @@ const FIXED_FIELD = "0000";
 const COURIER = "sicepat";
 const MAX_CONCURRENT = 16;
 const SAVE_EVERY = 100;
+const BITESHIP_SECRET = "ICPHV3CQGPTk7pmiYWnrLAzxcX9n4kC236pjn6OL5UwNf0uC3p";
+const BITESHIP_BASE = "https://api.biteship.com";
 
 // ── State ──
 let results = [];
@@ -184,22 +186,102 @@ async function initApp() {
 }
 
 // ═══════════════════════════════════════════════════════
-// API CALL — proxy via /api/track (Vercel serverless)
+// API CALL — direct Biteship (via Web Crypto HMAC) + proxy fallback
 // ═══════════════════════════════════════════════════════
+
+// ── HMAC-SHA256 via Web Crypto API ──
+async function hmacSha256(message, secret) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ── Rotating mobile UA ──
+const UA_ANDROID = ["14","13","12","11","10"];
+const UA_CHROME = ["126","125","124","123","122","121"];
+const UA_DEVICES = ["Pixel 8","Pixel 7","SM-G998B","SM-G996B","Xiaomi 14","Xiaomi 13","Redmi Note 12","ONEPLUS A6013","M2007J3SG"];
+function buildUa() {
+  const a = UA_ANDROID[Math.floor(Math.random()*UA_ANDROID.length)];
+  const c = UA_CHROME[Math.floor(Math.random()*UA_CHROME.length)];
+  const d = UA_DEVICES[Math.floor(Math.random()*UA_DEVICES.length)];
+  return `Mozilla/5.0 (Linux; Android ${a}; ${d}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${c}.0.0.0 Mobile Safari/537.36`;
+}
+
+// ── Direct Biteship call (no proxy) ──
+async function trackBiteshipDirect(awb, courier) {
+  const path = `/v1/public/trackings/${encodeURIComponent(awb)}/couriers/${encodeURIComponent(courier)}`;
+  const url = BITESHIP_BASE + path;
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const message = `${timestamp}|GET|${path}`;
+  const signature = await hmacSha256(message, BITESHIP_SECRET);
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "Authorization": "Public",
+          "x-biteship-public-request-signature": signature,
+          "x-biteship-public-request-timestamp": timestamp,
+          "User-Agent": buildUa(),
+        },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (resp.status === 404) return null;
+      if (resp.status === 429) {
+        await new Promise(r => setTimeout(r, (10 + Math.random()) * 1000));
+        continue;
+      }
+      if (resp.status >= 500 && attempt < 2) {
+        await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt)));
+        continue;
+      }
+      return await resp.json();
+    } catch (err) {
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 1500 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return null;
+}
+
+// ── Proxy fallback (via /api/track) ──
+async function trackAwbProxy(awb, courier, provider) {
+  const url = `/api/track?awb=${encodeURIComponent(awb)}&courier=${encodeURIComponent(courier)}&provider=${encodeURIComponent(provider)}`;
+  const resp = await fetch(url);
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    const text = await resp.text();
+    return { success: false, message: `HTTP ${resp.status}: ${text}`, error: text };
+  }
+  return await resp.json();
+}
+
+// ── Main track function ──
 async function trackAwb(awb, courier = COURIER, provider = null) {
   const prov = provider || settings.provider || "biteship";
-  const url = `/api/track?awb=${encodeURIComponent(awb)}&courier=${encodeURIComponent(courier)}&provider=${encodeURIComponent(prov)}`;
-  try {
-    const resp = await fetch(url);
-    if (resp.status === 404) return null;
-    if (!resp.ok) {
-      const text = await resp.text();
-      return { success: false, message: `HTTP ${resp.status}: ${text}`, error: text };
+
+  // Biteship: direct call (no proxy overhead)
+  if (prov === "biteship") {
+    try {
+      const result = await trackBiteshipDirect(awb, courier);
+      if (result !== undefined) return result;
+    } catch {
+      // Fall through to proxy on network error
     }
-    return await resp.json();
-  } catch (err) {
-    return { success: false, message: err.message, error: err.message };
+    // Fallback to proxy
+    return await trackAwbProxy(awb, courier, "biteship");
   }
+
+  // Binderbyte: always via proxy (needs secret key)
+  return await trackAwbProxy(awb, courier, prov);
 }
 
 // ═══════════════════════════════════════════════════════
