@@ -8,6 +8,39 @@ const BITESHIP_BASE = "https://api.biteship.com";
 const BITESHIP_SECRET = process.env.BITESHIP_SECRET;
 const BINDERBYTE_KEY = process.env.BINDERBYTE_KEY;
 
+// ── Upstash Redis rate limiting ─────────────────────────
+const UPSTASH_URL = "https://normal-louse-172843.upstash.io";
+const UPSTASH_TOKEN = "gQAAAAAAAqMrAAIgcDE1OWU5Mjc3YmJlZmI0MGZkOTY2YWMxZDUzNGYzZDYyNw";
+const RATE_LIMIT_MAX = 60;  // max requests per window
+const RATE_LIMIT_WINDOW = 60; // seconds
+
+async function redisExec(command) {
+  try {
+    const resp = await fetch(UPSTASH_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${UPSTASH_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(command),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.result;
+  } catch {
+    return null; // Redis down → silently skip rate limit
+  }
+}
+
+async function checkRateLimit(ip) {
+  const key = `rate:${ip}`;
+  const count = await redisExec(["INCR", key]);
+  if (count === null) return true; // Redis down → allow
+  if (count === 1) await redisExec(["EXPIRE", key, RATE_LIMIT_WINDOW]);
+  return count <= RATE_LIMIT_MAX;
+}
+
 // ── CORS headers ──────────────────────────────────────────
 function corsHeaders() {
   return {
@@ -120,6 +153,16 @@ export default async function handler(req, res) {
 
   if (!awb) {
     return res.status(400).json({ error: "Missing 'awb' parameter" });
+  }
+
+  // Rate limit check (soft: Redis down → skip)
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+  const allowed = await checkRateLimit(ip);
+  if (!allowed) {
+    return res.status(429).json({
+      error: "Rate limit exceeded. Max 60 requests per minute.",
+      success: false,
+    });
   }
 
   try {

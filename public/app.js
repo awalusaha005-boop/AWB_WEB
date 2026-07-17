@@ -857,15 +857,50 @@ function applyTheme(theme) {
 }
 
 // ═══════════════════════════════════════════════════════
-// PROGRESS (save/resume/reset)
+// PROGRESS (save/resume/reset) + Redis backup
 // ═══════════════════════════════════════════════════════
 function saveProgress() {
   if (!progress) return;
   try { localStorage.setItem("awb_progress", JSON.stringify(progress)); } catch {}
+  // Fire-and-forget to Redis
+  syncProgressToRedis(progress);
 }
 
 function deleteProgress() {
   try { localStorage.removeItem("awb_progress"); } catch {}
+  // Delete from Redis too
+  syncProgressToRedis(null);
+}
+
+async function syncProgressToRedis(data) {
+  try {
+    const user = getAuthUser();
+    const uid = user?.username || "guest";
+    const key = `progress:${uid}`;
+    const value = data ? JSON.stringify(data) : "";
+    await fetch("/api/redis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data ? ["SET", key, value] : ["DEL", key]),
+    });
+  } catch { /* silently ignore Redis errors */ }
+}
+
+async function loadProgressFromRedis() {
+  try {
+    const user = getAuthUser();
+    const uid = user?.username || "guest";
+    const key = `progress:${uid}`;
+    const resp = await fetch("/api/redis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(["GET", key]),
+    });
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    if (!json.result) return null;
+    return JSON.parse(json.result);
+  } catch { return null; }
 }
 
 function loadProgress() {
@@ -877,8 +912,21 @@ function loadProgress() {
 
 function checkProgressOnStartup() {
   progress = loadProgress();
+  // Fallback: try Redis if localStorage empty
+  if (!progress || !progress.phase) {
+    loadProgressFromRedis().then(redisProgress => {
+      if (redisProgress && redisProgress.phase) {
+        progress = redisProgress;
+        log("Progress dipulihkan dari Redis.", "system");
+        showProgressResumePrompt();
+      }
+    });
+  }
   if (!progress || !progress.phase) { progress = null; return; }
+  showProgressResumePrompt();
+}
 
+function showProgressResumePrompt() {
   const midCount = progress.checkedMids?.length || 0;
   const areaCount = progress.checkedAreas?.length || 0;
   const resume = confirm(
