@@ -229,9 +229,29 @@
 <script type="module" src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js')
-        .then(reg => console.log('SW registered'))
+        .then(reg => {
+          console.log('SW registered');
+          // Check for updates every time page loads
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+                console.log('SW updated, reloading...');
+                window.location.reload();
+              }
+            });
+          });
+          // Force update check
+          reg.update();
+        })
         .catch(err => console.log('SW failed', err));
     });
   }
