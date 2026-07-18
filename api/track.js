@@ -11,7 +11,7 @@ const BINDERBYTE_KEY = process.env.BINDERBYTE_KEY;
 // ── Upstash Redis rate limiting ─────────────────────────
 const UPSTASH_URL = "https://normal-louse-172843.upstash.io";
 const UPSTASH_TOKEN = "gQAAAAAAAqMrAAIgcDE1OWU5Mjc3YmJlZmI0MGZkOTY2YWMxZDUzNGYzZDYyNw";
-const RATE_LIMIT_MAX = 60;  // max requests per window
+const RATE_LIMIT_MAX = 300;  // max requests per window (dinaikkan dari 60 → 300 untuk support 32 workers)
 const RATE_LIMIT_WINDOW = 60; // seconds
 
 async function redisExec(command) {
@@ -147,6 +147,12 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
+  // Handle keep-alive HEAD requests (warm up function, skip rate limit)
+  if (req.method === "HEAD") {
+    Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
+    return res.status(200).end();
+  }
+
   Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
 
   const { awb, courier = "sicepat", provider = "biteship" } = req.query;
@@ -155,14 +161,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing 'awb' parameter" });
   }
 
-  // Rate limit check (soft: Redis down → skip)
+  // Skip rate limit for keep-alive pings
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
-  const allowed = await checkRateLimit(ip);
-  if (!allowed) {
-    return res.status(429).json({
-      error: "Rate limit exceeded. Max 60 requests per minute.",
-      success: false,
-    });
+  if (awb !== "keepalive") {
+    const allowed = await checkRateLimit(ip);
+    if (!allowed) {
+      return res.status(429).json({
+        error: "Rate limit exceeded. Max 300 requests per minute.",
+        success: false,
+      });
+    }
   }
 
   try {

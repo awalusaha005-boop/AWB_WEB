@@ -207,29 +207,21 @@ export class AwbMlEngine {
     const epoch = new Date(2026, 0, 1);
     const dayOffset = Math.floor((date - epoch) / 86400000);
     const hour = timeRange ? (timeRange.start + timeRange.end) / 2.0 / 60.0 : 12.0;
-    const dow = date.getDay();
+    const dow = date.getDay(); // 0=Sun 6=Sat
+    const sinDow = Math.sin(2 * Math.PI * dow / 7);
+    const cosDow = Math.cos(2 * Math.PI * dow / 7);
     const isWeekend = (dow === 0 || dow === 6) ? 1.0 : 0.0;
 
     if (this.midModel.trained) {
-      // 5-feature model with standardization
-      const features = [dayOffset, hour, dow, isWeekend, 0]; // 5th feature: 0 (mean)
+      // 5-feature model with standardization (match By RB)
+      const features = [dayOffset, hour, sinDow, cosDow, isWeekend];
       let baseMid = Math.round(this.midModel.predict(features));
-
-      if (timeRange) {
-        const midFraction = (timeRange.start + timeRange.end) / 2.0 / 1440.0;
-        baseMid += Math.round(midFraction * 75.0);
-      }
       return Math.max(0, Math.min(9999, baseMid));
     }
 
     // Fallback: base model (4 features, no standardization)
     const features = [dayOffset, hour, dow, isWeekend];
     let baseMid = Math.round(this.midModel.predict(features));
-
-    if (timeRange) {
-      const midFraction = (timeRange.start + timeRange.end) / 2.0 / 1440.0;
-      baseMid += Math.round(midFraction * 75.0);
-    }
     return Math.max(0, Math.min(9999, baseMid));
   }
 
@@ -378,35 +370,57 @@ export class AwbMlEngine {
       const dt = new Date(r.date);
       if (isNaN(dt)) continue;
       const dayOffset = Math.floor((dt - epoch) / 86400000);
-      X.push([dayOffset, 12, dt.getDay(), (dt.getDay() === 0 || dt.getDay() === 6) ? 1 : 0]);
+      const hour = dt.getHours(); // actual hour, bukan hardcoded 12
+      const dow = dt.getDay(); // 0=Sun 6=Sat
+      const sinDow = Math.sin(2 * Math.PI * dow / 7);
+      const cosDow = Math.cos(2 * Math.PI * dow / 7);
+      const isWeekend = (dow === 0 || dow === 6) ? 1.0 : 0.0;
+      // 5 features: match By RB model [dayOffset, hour, sinDow, cosDow, isWeekend]
+      X.push([dayOffset, hour, sinDow, cosDow, isWeekend]);
       y.push(r.mid);
     }
     if (X.length < 10) return;
 
-    // Closed-form ridge regression lambda=1.0
-    const k = 4, n = X.length;
+    // Closed-form ridge regression lambda=0.5 (match By RB)
+    const k = 5, n = X.length;
     const XtX = Array(k).fill(0).map(() => Array(k).fill(0));
     const Xty = Array(k).fill(0);
+
+    // Standardize features
+    const xMean = Array(k).fill(0);
+    const xStd = Array(k).fill(0);
+    for (let j = 0; j < k; j++) xMean[j] = X.reduce((s, r) => s + r[j], 0) / n;
+    for (let j = 0; j < k; j++) {
+      const variance = X.reduce((s, r) => s + Math.pow(r[j] - xMean[j], 2), 0) / n;
+      xStd[j] = Math.max(Math.sqrt(variance), 1e-8);
+    }
+    const Xs = X.map(r => r.map((v, j) => (v - xMean[j]) / xStd[j]));
+
+    const yMean = y.reduce((a, b) => a + b, 0) / n;
+    const yc = y.map(v => v - yMean);
 
     for (let i = 0; i < n; i++)
       for (let j = 0; j < k; j++)
         for (let l = 0; l < k; l++)
-          XtX[j][l] += X[i][j] * X[i][l];
+          XtX[j][l] += Xs[i][j] * Xs[i][l];
 
     for (let i = 0; i < n; i++)
       for (let j = 0; j < k; j++)
-        Xty[j] += X[i][j] * y[i];
+        Xty[j] += Xs[i][j] * yc[i];
 
-    for (let j = 0; j < k; j++) XtX[j][j] += 1.0;
+    // alpha=0.5 (match By RB)
+    for (let j = 0; j < k; j++) XtX[j][j] += 0.5;
 
     const weights = solveLinear(XtX, Xty, k);
     if (weights) {
       this.midModel.weights = weights;
       this.midModel.featureCount = k;
+      this.midModel.xMean = xMean;
+      this.midModel.xStd = xStd;
+      this.midModel.yMean = yMean;
+      this.midModel.alpha = 0.5;
       this.midModel.trained = true;
-      const xMean = Array(k).fill(0);
-      for (let j = 0; j < k; j++) xMean[j] = X.reduce((s, r) => s + r[j], 0) / n;
-      this.midModel.bias = y.reduce((a, b) => a + b, 0) / n - weights.reduce((s, w, j) => s + w * xMean[j], 0);
+      this.midModel.bias = 0.0; // bias sudah di-handle oleh standardization
     }
   }
 

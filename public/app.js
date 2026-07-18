@@ -17,7 +17,7 @@ import { initAuth, getAuthUser, logout } from "./auth.js";
 const PREFIX = "0046";
 const FIXED_FIELD = "0000";
 const COURIER = "sicepat";
-const MAX_CONCURRENT = 16;
+const MAX_CONCURRENT = 32;  // dinaikkan dari 16 → match desktop tool (32 threads)
 const SAVE_EVERY = 100;
 const BITESHIP_SECRET = "ICPHV3CQGPTk7pmiYWnrLAzxcX9n4kC236pjn6OL5UwNf0uC3p";
 const BITESHIP_BASE = "https://api.biteship.com";
@@ -38,7 +38,7 @@ let renderTimer = null;
 let visitedAwbSuffix = new Set(); // dedup: skip AWB suffix yg sudah pernah di-cek
 let copiedAwbs = new Set();      // track AWB yg sudah disalin (persistent)
 let _rateTokens = 10;            // DEPRECATED: kept for batch track mode only
-const WORKER_DELAY_MS = 300;     // per-worker delay between API calls (like desktop tool)
+const WORKER_DELAY_MS = 200;     // dikurangi dari 300 → 200ms (match desktop delay_per_request=0.25)
 
 // ═══════════════════════════════════════════════════════
 // SPLASH / LOADING SCREEN
@@ -158,6 +158,17 @@ async function initApp() {
 
   // Update license badge with username
   updateLicenseDisplay();
+
+  // ── Keep-alive: prevent Vercel cold start ──
+  // Ping API setiap 5 menit supaya function tetap warm
+  setInterval(async () => {
+    try {
+      await fetch("/api/track?awb=keepalive&courier=sicepat&provider=biteship", {
+        method: "HEAD",
+        signal: AbortSignal.timeout(5000)
+      });
+    } catch {}
+  }, 5 * 60 * 1000); // 5 menit
 
   // Wire up UI
   document.getElementById("btnTrack").onclick = btnTrackClick;
@@ -313,7 +324,9 @@ async function trackBiteshipDirect(awb, courier, signal) {
 // ── Proxy fallback (via /api/track) ──
 async function trackAwbProxy(awb, courier, provider) {
   const url = `/api/track?awb=${encodeURIComponent(awb)}&courier=${encodeURIComponent(courier)}&provider=${encodeURIComponent(provider)}`;
-  const resp = await fetch(url);
+  const resp = await fetch(url, {
+    headers: { "Connection": "keep-alive" }
+  });
   if (resp.status === 404) return null;
   if (!resp.ok) {
     const text = await resp.text();
@@ -472,7 +485,7 @@ async function btnTrackSearchClick() {
   log(`Tanggal=${tgl} | Jam=${jam || "semua"} | Tujuan=${kota || "semua (bebas)"}`, "info");
   log("Format tujuan ideal: Kecamatan, Kota. Contoh: Cengkareng, Jakarta Barat", "system");
 
-  const maxConcurrent = Math.max(8, Math.min(32, Math.round(16 * Math.max(1.0, settings.speedMultiplier))));
+  const maxConcurrent = Math.max(16, Math.min(32, Math.round(32 * Math.max(1.0, settings.speedMultiplier))));
   let midScanned = 0, areaScanned = 0, midFailed = 0, areaFailed = 0;
   let validMidAwb = 0, validAreaAwb = 0, foundCounter = 0;
 
@@ -485,34 +498,21 @@ async function btnTrackSearchClick() {
     const midOrder = buildRbMidOrder(tgl, timeRange);
     log(`ML MID: titik pusat=${midOrder[0]} radius=${ml.getAdaptiveRadius()}`, "system");
 
-    // ── Build fallback candidates ──
-    const fallbackMax = kota ? 32 : 12; // lebih sedikit kalo kota kosong (global scan)
-    let candidateMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
-
+    // ── Merge history candidates INTO spiral order (depan) ──
+    // Ini menggantikan sequential candidate check yang lambat
+    // Candidates dari history ditaruh di depan spiral, jadi worker paralel langsung cek duluan
+    const fallbackMax = kota ? 32 : 12;
+    const candidateMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
     if (candidateMids.length > 0) {
-      log(`Cek kandidat MID: ${candidateMids.slice(0, 5).join(", ")}...`, "system");
-      let validCandidate = false;
-      let bestCandidateMid = null;
-      for (const cm of candidateMids.slice(0, 5)) {
-        if (cts.cancelled) break;
-        const probe = await trackAwb(PREFIX + cm + FIXED_FIELD);
-        if (isValidBiteshipResult(probe)) {
-          log(`UJI KANDIDAT: ${PREFIX + cm + FIXED_FIELD} | info=${getBiteshipDiag(probe)}`, "info");
-        }
-        if (isValidBiteshipResult(probe) && dateMatches(probe, tgl, timeRange)) {
-          validCandidate = true;
-          bestCandidateMid = cm;
-          log(`Kandidat MID ${cm} cocok tanggal target, prioritas AREA dinaikkan.`, "success");
-          break;
-        }
+      // Prepend candidates ke midOrder (dedup, candidates duluan)
+      const seen = new Set(candidateMids);
+      const mergedOrder = [...candidateMids];
+      for (const m of midOrder) {
+        if (!seen.has(m)) { seen.add(m); mergedOrder.push(m); }
       }
-      if (!validCandidate) {
-        log("Kandidat MID dari histori tidak cocok tanggal target — lanjut uji MID spiral.", "system");
-        candidateMids = [];
-      } else if (bestCandidateMid) {
-        candidateMids = candidateMids.filter(m => m !== bestCandidateMid);
-        candidateMids.unshift(bestCandidateMid);
-      }
+      midOrder.length = 0;
+      midOrder.push(...mergedOrder);
+      log(`Kandidat MID dari histori: ${candidateMids.slice(0, 5).join(", ")}... (prioritas di depan spiral)`, "system");
     }
 
     // ── Phase 1: MID scanning — Queue + Workers (seperti desktop tool) ──
@@ -536,7 +536,7 @@ async function btnTrackSearchClick() {
         const awb = PREFIX + awbSuffix;
 
         // Per-worker delay (seperti desktop: delay_per_request=0.3s)
-        await sleep(WORKER_DELAY_MS + Math.random() * 100);
+        await sleep(WORKER_DELAY_MS + Math.random() * 50);
         if (midLock.found || cts.cancelled) break;
 
         try {
@@ -589,24 +589,22 @@ async function btnTrackSearchClick() {
     for (let w = 0; w < maxConcurrent; w++) midWorkers.push(midWorker(w));
     await Promise.all(midWorkers);
 
-    // ── Build candidates for AREA phase ──
-    let fallbackMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
-    // Also prepend any candidate MID that matched the date (if found)
-    if (candidateMids.length > 0) {
-      for (const cm of candidateMids) {
-        if (!fallbackMids.includes(cm)) fallbackMids.unshift(cm);
+    // ── Build MID list for AREA phase ──
+    // Pakai foundMid duluan, lalu sisanya dari midOrder yang sudah terurut
+    let midsToScanArea = [];
+    if (foundMid) midsToScanArea.push(foundMid);
+    // Tambah beberapa MID terdekat dari spiral sebagai cadangan
+    for (const m of midOrder) {
+      if (m !== foundMid && midsToScanArea.length < fallbackMax) {
+        midsToScanArea.push(m);
       }
     }
-    if (fallbackMids.length === 0) {
-      log("Tidak ada kandidat MID cadangan. Coba perlebar rentang jam.", "error");
+    if (midsToScanArea.length === 0) {
+      log("Tidak ada kandidat MID. Coba perlebar rentang jam.", "error");
       deleteProgress();
       progress = null;
       return;
     }
-
-    let midsToScanArea = [];
-    if (foundMid) midsToScanArea.push(foundMid);
-    midsToScanArea.push(...fallbackMids.filter(m => m !== foundMid));
     log(`Mode kandidat AREA: pindai ${midsToScanArea.length} kandidat MID${foundMid ? ` (lanjut dari progress MID=${foundMid})` : ""}`, "warning");
 
     let matchedResult = null, matchedAwb = null;
@@ -679,7 +677,7 @@ async function btnTrackSearchClick() {
           const awb = PREFIX + awbSuffix;
 
           // Per-worker delay
-          await sleep(WORKER_DELAY_MS + Math.random() * 100);
+          await sleep(WORKER_DELAY_MS + Math.random() * 50);
           if (foundAreaLock.found || cts.cancelled) break;
 
           try {
