@@ -4,10 +4,36 @@
 
 const AUTH_KEY = "awb_auth";
 const AUTH_API = "/api/auth";
+const DEVICE_ID_KEY = "awb_device_id";
 
 // ── State ──
 let authUser = null;
 let _onLogin = null;
+
+// ── Device ID ──
+function getOrCreateDeviceId() {
+  try {
+    let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+    if (deviceId) return deviceId;
+    
+    // Generate device ID
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      deviceId = crypto.randomUUID();
+    } else {
+      // Fallback: kombinasi user agent + screen + timezone + random
+      const ua = navigator.userAgent || "";
+      const screen = `${window.screen.width}x${window.screen.height}`;
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const rand = Math.random().toString(36).substring(2, 15);
+      deviceId = btoa(`${ua}|${screen}|${tz}|${rand}`).replace(/[^a-zA-Z0-9]/g, "").substring(0, 32);
+    }
+    
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
+    return deviceId;
+  } catch {
+    return "unknown-device";
+  }
+}
 
 // ── Init ──
 export function initAuth(onLogin) {
@@ -121,10 +147,11 @@ async function doLogin(kodeEl, btn, errorEl) {
   hideError(errorEl);
 
   try {
+    const deviceId = getOrCreateDeviceId();
     const resp = await fetch(AUTH_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kodeAkses }),
+      body: JSON.stringify({ kodeAkses, deviceId }),
     });
 
     const data = await resp.json();

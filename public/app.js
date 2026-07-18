@@ -35,6 +35,9 @@ let logRafId = null;
 let progress = null; // { phase, checkedMids, checkedAreas, foundMid, ... }
 let renderPending = false;
 let renderTimer = null;
+let visitedAwbSuffix = new Set(); // dedup: skip AWB suffix yg sudah pernah di-cek
+let copiedAwbs = new Set();      // track AWB yg sudah disalin (persistent)
+let _rateTokens = 10;            // token bucket rate limiter (10 RPS)
 
 // ═══════════════════════════════════════════════════════
 // SPLASH / LOADING SCREEN
@@ -264,6 +267,15 @@ async function trackAwbProxy(awb, courier, provider) {
   return await resp.json();
 }
 
+// ── Rate limiter (token bucket, 10 RPS) ──
+async function rateAcquire() {
+  while (_rateTokens < 1) {
+    await new Promise(r => setTimeout(r, 100));
+    _rateTokens = Math.min(10, _rateTokens + 1);
+  }
+  _rateTokens--;
+}
+
 // ── Main track function ──
 async function trackAwb(awb, courier = COURIER, provider = null) {
   const prov = provider || settings.provider || "biteship";
@@ -332,7 +344,7 @@ async function btnTrackClick() {
   await Promise.all(tasks);
 
   const duration = new Date(Date.now() - startTime);
-  updateStats(duration);
+  updateStats(duration, awbList.length);
 
   log(`Selesai! ${results.length} hasil.`, "success");
   setButtonsDisabled(false);
@@ -358,15 +370,16 @@ async function btnTrackSearchClick() {
     return;
   }
 
-  if (!kota) {
-    log("Kota tujuan wajib format Kecamatan, Kota. Contoh: Cengkareng, Jakarta Barat", "warning");
-    return;
+  // Kota optional — kalo kosong, skip filter kota, cuma filter tanggal+jam
+  if (kota) {
+    log(`Filter kota: ${kota}`, "info", false);
   }
 
   setButtonsDisabled(true);
   document.getElementById("btnStop").classList.remove("hidden");
   cts = { cancelled: false };
   results = [];
+  visitedAwbSuffix = new Set(); // reset dedup
   document.getElementById("icResults").innerHTML = "";
   startTime = Date.now();
 
@@ -400,8 +413,8 @@ async function btnTrackSearchClick() {
     saveProgress();
   }
 
-  log("=== MODE PENCARIAN: JAM/TANGGAL/KOTA ===", "system");
-  log(`Tanggal=${tgl} | Jam=${jam || "semua"} | Tujuan=${kota}`, "info");
+  log("=== MODE PENCARIAN: JAM/TANGGAL/KOTA ===\n", "system");
+  log(`Tanggal=${tgl} | Jam=${jam || "semua"} | Tujuan=${kota || "semua (bebas)"}`, "info");
   log("Format tujuan ideal: Kecamatan, Kota. Contoh: Cengkareng, Jakarta Barat", "system");
 
   const maxConcurrent = Math.max(8, Math.min(32, Math.round(16 * Math.max(1.0, settings.speedMultiplier))));
@@ -418,7 +431,8 @@ async function btnTrackSearchClick() {
     log(`ML MID: titik pusat=${midOrder[0]} radius=${ml.getAdaptiveRadius()}`, "system", false);
 
     // ── Build fallback candidates ──
-    let candidateMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, 32);
+    const fallbackMax = kota ? 32 : 12; // lebih sedikit kalo kota kosong (global scan)
+    let candidateMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
 
     if (candidateMids.length > 0) {
       log(`Cek kandidat MID: ${candidateMids.slice(0, 5).join(", ")}...`, "system", false);
@@ -447,7 +461,7 @@ async function btnTrackSearchClick() {
     }
 
     // ── Phase 1: MID scanning (always run, candidates are just hints) ──
-    log("Fase 1: mencari MID yang cocok tanggal/jam...", "system", false);
+    log("🔎 Mencari MID...", "system", false);
     log(`Titik pusat MID (ML): ${midOrder[0]} | prioritas pindai di sekitar titik pusat`, "system", false);
 
     const midSemaphore = { current: 0, max: maxConcurrent };
@@ -458,18 +472,23 @@ async function btnTrackSearchClick() {
     for (const midStr of midsToScan) {
       if (cts.cancelled || foundMid) break;
       if (checkedMids.has(midStr)) continue;
-      const awb = PREFIX + midStr + FIXED_FIELD;
+      const awbSuffix = midStr + FIXED_FIELD;
+      if (visitedAwbSuffix.has(awbSuffix)) continue; // dedup
+      const awb = PREFIX + awbSuffix;
 
       const task = (async () => {
         await acquireSemaphore(midSemaphore);
         try {
           if (foundMid) return;
+          await rateAcquire(); // rate limiter
           const result = await trackAwb(awb);
           const current = ++midScanned;
           checkedMids.add(midStr);
+          visitedAwbSuffix.add(awbSuffix);
           progress.lastMid = midStr;
-          if (current % 100 === 0) {
-            log(`MID dipindai ${current} | valid=${validMidAwb} | gagal=${midFailed}`, "info", false);
+          if (current % 200 === 0) {
+            log(`Mencari MID: dipindai ${current} | valid=${validMidAwb} | gagal=${midFailed}`, "info", false);
+            updateStats(null, current); // real-time dipindai
             if (current % SAVE_EVERY === 0) {
               progress.checkedMids = [...checkedMids];
               saveProgress();
@@ -484,8 +503,9 @@ async function btnTrackSearchClick() {
           const dateOk = dateMatches(result, tgl, timeRange);
           const newPrintOk = !newPrintOnly || isNewPrintStatus(result);
           const displayDate = dateOk ? extractMatchingDate(result, tgl, timeRange) : date;
-          if (dateOk && newPrintOk)
-            log(`MID valid: ${awb} | ${displayDate} | ${dest} | TARGET`, "success", false);
+          const mark = (dateOk && newPrintOk) ? " 🎯" : "";
+          if (date && dest)
+            log(`Mencari MID: ✅ VALID${mark}    -> ${awb} | ${displayDate} | ${dest}`, "success", false);
 
           if (date && dest) {
             ml.recordValidAwb(awb, date, dest, parseInt(midStr), 0);
@@ -514,7 +534,7 @@ async function btnTrackSearchClick() {
     if (midTasks.length > 0) await Promise.all(midTasks);
 
     // ── Build candidates for AREA phase ──
-    let fallbackMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, 32);
+    let fallbackMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
     // Also prepend any candidate MID that matched the date (if found)
     if (candidateMids.length > 0) {
       for (const cm of candidateMids) {
@@ -550,32 +570,35 @@ async function btnTrackSearchClick() {
 
       log(`MID kandidat: ${foundMid} dari ${foundMidAwb}. Pindai AREA tujuan...`, "success");
 
-      // Dest cache check
-      const cityKeyForCache = extractCityKey(kota);
-      const cacheOut = {};
-      if (ml.tryDestCache(cityKeyForCache, cacheOut)) {
-        const cacheAwb = PREFIX + foundMid + String(cacheOut.area).padStart(4, "0");
-        log(`CACHE TUJUAN COCOK: ${cityKeyForCache} → AREA ${String(cacheOut.area).padStart(4, "0")} | uji ${cacheAwb}`, "system", false);
-        const cacheResult = await trackAwb(cacheAwb);
-        if (isValidBiteshipResult(cacheResult) && matchDestination(buildDestination(cacheResult), kota) &&
-            dateMatches(cacheResult, tgl, timeRange) && (!newPrintOnly || isNewPrintStatus(cacheResult))) {
-          ml.recordValidAwb(cacheAwb, extractShipmentDate(cacheResult), buildDestination(cacheResult), parseInt(foundMid), cacheOut.area);
-          results.push(createBiteshipRow(cacheAwb, cacheResult, tgl, timeRange));
-          renderResults();
-          matchedAwb = cacheAwb;
-          matchedResult = cacheResult;
-          foundCounter++;
-          log(`HASIL LANGSUNG DARI CACHE: ${cacheAwb} | tidak perlu pindai AREA`, "success");
-          showNextButton();
-          await waitForNext();
-          hideNextButton();
-          if (cts.cancelled) break;
-          continue;
+      // Dest cache check — skip kalo kota kosong
+      if (kota) {
+        const cityKeyForCache = extractCityKey(kota);
+        const cacheOut = {};
+        if (ml.tryDestCache(cityKeyForCache, cacheOut)) {
+          const cacheAwb = PREFIX + foundMid + String(cacheOut.area).padStart(4, "0");
+          log(`CACHE TUJUAN COCOK: ${cityKeyForCache} → AREA ${String(cacheOut.area).padStart(4, "0")} | uji ${cacheAwb}`, "system", false);
+          const cacheResult = await trackAwb(cacheAwb);
+          if (isValidBiteshipResult(cacheResult) && matchDestination(buildDestination(cacheResult), kota) &&
+              dateMatches(cacheResult, tgl, timeRange) && (!newPrintOnly || isNewPrintStatus(cacheResult))) {
+            ml.recordValidAwb(cacheAwb, extractShipmentDate(cacheResult), buildDestination(cacheResult), parseInt(foundMid), cacheOut.area);
+            results.push(createBiteshipRow(cacheAwb, cacheResult, tgl, timeRange));
+            renderResults();
+            updateStats(null, areaScanned); // real-time cache match
+            matchedAwb = cacheAwb;
+            matchedResult = cacheResult;
+            foundCounter++;
+            log(`HASIL LANGSUNG DARI CACHE: ${cacheAwb} | tidak perlu pindai AREA`, "success");
+            showNextButton();
+            await waitForNext();
+            hideNextButton();
+            if (cts.cancelled) break;
+            continue;
+          }
+          log("Cache tidak cocok, lanjut pindai AREA...", "info", false);
         }
-        log("Cache tidak cocok, lanjut pindai AREA...", "info", false);
       }
 
-      log(`Fase 2: mencari AREA yang cocok tujuan + tanggal/jam untuk MID ${foundMid}...`, "system", false);
+      log(`🔎 Mencari AREA (daerah) untuk MID ${foundMid}...`, "system", false);
 
       const areaSemaphore = { current: 0, max: maxConcurrent };
       const foundAreaLock = { found: false };
@@ -595,7 +618,7 @@ async function btnTrackSearchClick() {
             areaTasks = [];
           }
           showNextButton();
-          log("✓ Match ditemukan! Klik ⏭ Next untuk lanjut cari, ⏹ Stop untuk berhenti.", "success");
+          log("🎉 Match ditemukan! Klik ⏭ Next untuk lanjut cari, ⏹ Stop untuk berhenti.", "success");
           await waitForNext();
           hideNextButton();
           if (cts.cancelled) break;
@@ -604,18 +627,23 @@ async function btnTrackSearchClick() {
         }
         if (foundArea) continue; // re-check after drain — skip if foundArea survived
         if (checkedAreas.has(areaStr)) continue;
-        const awb = PREFIX + foundMid + areaStr;
+        const awbSuffix = foundMid + areaStr;
+        if (visitedAwbSuffix.has(awbSuffix)) continue; // dedup
+        const awb = PREFIX + awbSuffix;
 
         const task = (async () => {
           await acquireSemaphore(areaSemaphore);
           try {
             if (foundArea) return;
+            await rateAcquire(); // rate limiter
             const result = await trackAwb(awb);
             const current = ++areaScanned;
             checkedAreas.add(areaStr);
+            visitedAwbSuffix.add(awbSuffix);
             progress.lastArea = areaStr;
             if (current % 200 === 0) {
-              log(`AREA dipindai ${current} | mid=${foundMid} | valid=${validAreaAwb} | gagal=${areaFailed} | cocok=${foundCounter}`, "info", false);
+              log(`Mencari AREA: dipindai ${current} | mid=${foundMid} | valid=${validAreaAwb} | gagal=${areaFailed} | cocok=${foundCounter}`, "info", false);
+              updateStats(null, current); // real-time dipindai
               if (current % SAVE_EVERY === 0) {
                 progress.checkedAreas = [...checkedAreas];
                 saveProgress();
@@ -647,7 +675,8 @@ async function btnTrackSearchClick() {
               // Only show first match, then auto-pause
               results.push(createBiteshipRow(awb, result, tgl, timeRange));
               renderResults();
-              log(`AREA valid: ${awb} | ${displayDate} | ${dest} | tujuan=OK | tanggal=OK | baru cetak=OK | COCOK | info=${getBiteshipDiag(result)}`, "success", false);
+              updateStats(null, areaScanned); // real-time: total +1, berhasil +1
+              log(`Mencari AREA: ✅ VALID 🎯    -> ${awb} | ${displayDate} | ${dest}`, "success", false);
             }
             // Skip adding results for subsequent matches (shown after Next)
           } catch (err) {
@@ -673,7 +702,7 @@ async function btnTrackSearchClick() {
 
     // ── Final stats ──
     const duration = new Date(Date.now() - startTime);
-    updateStats(duration);
+    updateStats(duration, midScanned + areaScanned);
     renderResultsNow();
 
     log("=== PENCARIAN SELESAI ===", "system");
@@ -764,6 +793,7 @@ function buildFallbackMids(targetDate, targetArea, timeRange, seedMid, midOrder,
   if (seedMid && /^\d+$/.test(seedMid)) addMid(parseInt(seedMid));
 
   const targetCity = extractCityKey(targetArea);
+  const hasKota = !!targetArea; // kalo kota kosong, skip filter kota
   const targetDt = new Date(targetDate);
   const targetDtOk = !isNaN(targetDt);
 
@@ -772,7 +802,7 @@ function buildFallbackMids(targetDate, targetArea, timeRange, seedMid, midOrder,
     .map(h => ({
       mid: h.mid,
       destination: h.destination,
-      cityOk: matchDestination(h.destination, targetArea) || normalizeKey(extractCityKey(h.destination)) === targetCity,
+      cityOk: hasKota ? (matchDestination(h.destination, targetArea) || normalizeKey(extractCityKey(h.destination)) === targetCity) : true,
       dateScore: targetDtOk && !isNaN(new Date(h.date.replace(/\./g, ":"))) ? Math.abs((new Date(h.date.replace(/\./g, ":")) - targetDt) / 86400000) : 9999.0
     }))
     .filter(x => x.cityOk)
@@ -805,11 +835,10 @@ function btnResetClick() {
   deleteProgress();
   progress = null;
   results = [];
+  visitedAwbSuffix = new Set(); // reset dedup
   document.getElementById("icResults").innerHTML = "";
   document.getElementById("txtAwb").value = "";
-  document.getElementById("txtJam").value = "";
-  document.getElementById("txtTanggal").value = "";
-  document.getElementById("txtKota").value = "";
+  // Pertahankan jam/tgl/kota — jangan clear
   document.getElementById("txtNoResults").classList.remove("hidden");
   document.getElementById("btnNext").classList.add("hidden");
   document.getElementById("btnStop").classList.remove("hidden");
@@ -827,6 +856,10 @@ function btnStopClick() {
     log("Stop — membatalkan scan, progress akan disimpan...", "warning");
     cts.cancelled = true;
   }
+  // Clear results + render empty state
+  results = [];
+  renderResultsNow();
+  updateStats(new Date(0));
 }
 
 function btnPauseClick() {
@@ -952,6 +985,7 @@ function deleteProgress() {
   try { localStorage.removeItem("awb_progress"); } catch {}
   // Delete from Redis too
   syncProgressToRedis(null);
+  progress = null; // reset in-memory state
 }
 
 async function syncProgressToRedis(data) {
@@ -1066,6 +1100,7 @@ function renderResultsNow() {
 function createResultCard(item, hideAwb) {
   const card = document.createElement("div");
   card.className = "result-card";
+  const isCopied = copiedAwbs.has(item.awb);
 
   const awbDisplay = hideAwb ? "****" : item.awb;
 
@@ -1076,7 +1111,7 @@ function createResultCard(item, hideAwb) {
           <div class="result-card-awb-label">No. Resi (AWB)</div>
           <div class="result-card-awb">${escapeXml(awbDisplay)}</div>
         </div>
-        <button class="btn-copy" title="Salin nomor resi" data-awb="${escapeXml(item.awb)}">📋</button>
+        <button class="btn-copy${isCopied ? " copied" : ""}" title="${isCopied ? "Sudah disalin" : "Salin nomor resi"}" data-awb="${escapeXml(item.awb)}">${isCopied ? "✓" : "📋"}</button>
       </div>
       <div class="result-card-status">${escapeXml(item.status)}</div>
     </div>
@@ -1128,8 +1163,10 @@ function createResultCard(item, hideAwb) {
   if (copyBtn) {
     copyBtn.onclick = () => {
       navigator.clipboard.writeText(item.awb).then(() => {
+        copiedAwbs.add(item.awb);           // persistent
         copyBtn.textContent = "✓";
-        setTimeout(() => copyBtn.textContent = "📋", 1000);
+        copyBtn.classList.add("copied");
+        copyBtn.title = "Sudah disalin";
       });
     };
   }
@@ -1137,15 +1174,14 @@ function createResultCard(item, hideAwb) {
   return card;
 }
 
-function updateStats(duration) {
+function updateStats(duration, scanned = 0) {
   document.getElementById("txtTotalResi").textContent = results.length;
   const success = results.filter(r => {
     const s = (r.status || "").toLowerCase();
     return !s.startsWith("gagal") && !s.startsWith("error") && !s.includes("failed");
   }).length;
-  const fail = results.length - success;
   document.getElementById("txtBerhasil").textContent = success;
-  document.getElementById("txtGagal").textContent = fail;
+  document.getElementById("txtDipindai").textContent = scanned || 0;
 }
 
 function formatDuration(ms) {

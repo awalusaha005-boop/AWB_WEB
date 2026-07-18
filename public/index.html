@@ -49,7 +49,7 @@
     </div>
     <div class="splash-segbar" id="splashSegbar"></div>
     <!-- Footer -->
-    <div class="splash-footer">v2.0.0 WEB &nbsp;•&nbsp; build 2026.07</div>
+    <div class="splash-footer">v2.1.0 WEB &nbsp;•&nbsp; build 2026.07</div>
   </div>
 </div>
 
@@ -58,7 +58,7 @@
   <div class="topbar-left">
     <img class="topbar-logo" src="New-AWB.png" alt="SiCepat Jinxpro">
     <span class="app-title">SiCepat Jinxpro</span>
-    <span class="app-badge">AUTOMATED AWB TRACKER · V2.0 WEB</span>
+    <span class="app-badge">AUTOMATED AWB TRACKER · V2.1 WEB</span>
   </div>
   <div class="topbar-right">
     <button id="menuToggle" class="menu-toggle" title="Menu">☰</button>
@@ -105,14 +105,20 @@
         <datalist id="kotaList"></datalist>
         <p class="field-hint">contoh: Cengkareng, Jakarta Barat</p>
 
-        <label class="checkbox-row">
-          <input type="checkbox" id="chkHideAwbColumn">
-          <span>🔒 Sembunyikan kolom AWB di hasil</span>
+        <label class="toggle-row">
+          <span class="toggle-label">🔒 Sembunyikan kolom AWB di hasil</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="chkHideAwbColumn">
+            <span class="toggle-slider"></span>
+          </label>
         </label>
 
-        <label class="checkbox-row">
-          <input type="checkbox" id="chkNewPrintOnly" checked>
-          <span>🆕 Hanya resi baru cetak</span>
+        <label class="toggle-row">
+          <span class="toggle-label">🆕 Hanya resi baru cetak</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="chkNewPrintOnly" checked>
+            <span class="toggle-slider"></span>
+          </label>
         </label>
 
         <button id="btnTrackSearch" class="btn-primary"><span class="icon">🔍</span><span class="text">Lacak</span></button>
@@ -155,9 +161,9 @@
           <span class="stat-label">Berhasil</span>
           <span class="stat-value" id="txtBerhasil">0</span>
         </div>
-        <div class="stat-card stat-red">
-          <span class="stat-label">Gagal</span>
-          <span class="stat-value" id="txtGagal">0</span>
+        <div class="stat-card stat-amber">
+          <span class="stat-label">Dipindai</span>
+          <span class="stat-value" id="txtDipindai">0</span>
         </div>
       </div>
     </div>

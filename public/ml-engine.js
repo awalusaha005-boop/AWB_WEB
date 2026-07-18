@@ -270,11 +270,28 @@ export class AwbMlEngine {
       if (!seen.has(entry.area)) { seen.add(entry.area); ordered.push(entry.area); }
     }
 
-    // 2. KDE per-kota
-    if (this.cityKdes[cityKey] && this.cityKdes[cityKey].areas.length > 0) {
-      const kde = this.cityKdes[cityKey];
-      kde.retrainBandwidth();
-      for (const a of kde.topAreas(ceiling)) {
+    // 2. KDE — per-kota atau global kalo cityKey kosong
+    if (cityKey) {
+      if (this.cityKdes[cityKey] && this.cityKdes[cityKey].areas.length > 0) {
+        const kde = this.cityKdes[cityKey];
+        kde.retrainBandwidth();
+        for (const a of kde.topAreas(ceiling)) {
+          if (!seen.has(a)) { seen.add(a); ordered.push(a); }
+        }
+      }
+    } else {
+      // Global: gabungin semua KDE kota, urutin by total frequency
+      const globalCounts = new Map();
+      for (const kde of Object.values(this.cityKdes)) {
+        for (let i = 0; i < kde.areas.length; i++) {
+          const a = kde.areas[i];
+          globalCounts.set(a, (globalCounts.get(a) || 0) + kde.counts[i]);
+        }
+      }
+      const sorted = [...globalCounts.entries()]
+        .filter(([a]) => a <= ceiling)
+        .sort((a, b) => b[1] - a[1]);
+      for (const [a] of sorted) {
         if (!seen.has(a)) { seen.add(a); ordered.push(a); }
       }
     }

@@ -1,8 +1,8 @@
 // /api/auth.js — Vercel Serverless Function
 // Proxy autentikasi ke Google Apps Script (via GET)
-// GET ?kodeAkses=XXX → forward ke Apps Script → return json
+// GET ?kodeAkses=XXX&deviceId=YYY → forward ke Apps Script → return json
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwU88nOoHlpJji2mfU5Nwf1lF-15B9BU1Zrw_867w8e-DEzUDHKhNamnZJvjnS9nxJTFg/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxEdAtDpOnyoUbprHyipa1GSErGR50sPImt9Pkjr6c3xQ-Ene7LFCzkgOJqPwMbe-l_6w/exec";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -13,10 +13,13 @@ export default async function handler(req, res) {
 
   // Support both GET (query) and POST (body)
   let kodeAkses;
+  let deviceId;
   if (req.method === "POST") {
     kodeAkses = (req.body || {}).kodeAkses;
+    deviceId = (req.body || {}).deviceId || "";
   } else {
     kodeAkses = req.query?.kodeAkses;
+    deviceId = req.query?.deviceId || "";
   }
 
   if (!kodeAkses) {
@@ -24,7 +27,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `${APPS_SCRIPT_URL}?kodeAkses=${encodeURIComponent(kodeAkses)}`;
+    const url = `${APPS_SCRIPT_URL}?kodeAkses=${encodeURIComponent(kodeAkses)}&deviceId=${encodeURIComponent(deviceId)}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const text = await resp.text();
 

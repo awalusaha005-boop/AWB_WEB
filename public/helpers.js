@@ -320,7 +320,8 @@ export function buildOrigin(result) {
 
 // ── Destination matching (fuzzy) ──
 export function matchDestination(entryDestRaw, targetAreaRaw) {
-  if (!entryDestRaw || !targetAreaRaw) return false;
+  if (!entryDestRaw) return false;
+  if (!targetAreaRaw) return true; // kota kosong = skip filter kota
   const destTokens = tokenList(entryDestRaw);
   const targetTokens = tokenList(targetAreaRaw);
   if (targetTokens.length === 0) return false;
