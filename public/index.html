@@ -245,7 +245,12 @@
       navigator.serviceWorker.register('service-worker.js')
         .then(reg => {
           console.log('SW registered');
-          // Check for updates every time page loads
+          
+          function checkForUpdate() {
+            reg.update();
+          }
+          
+          // Check on updatefound
           reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
             newWorker.addEventListener('statechange', () => {
@@ -255,8 +260,20 @@
               }
             });
           });
-          // Force update check
-          reg.update();
+          
+          // Periodic check every 5 minutes
+          setInterval(checkForUpdate, 5 * 60 * 1000);
+          
+          // Check when tab becomes visible
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) checkForUpdate();
+          });
+          
+          // Check when window regains focus
+          window.addEventListener('focus', checkForUpdate);
+          
+          // Initial check
+          checkForUpdate();
         })
         .catch(err => console.log('SW failed', err));
     });
