@@ -246,6 +246,9 @@
         .then(reg => {
           console.log('SW registered');
 
+          // Delayed check: detect new Vercel deploy without triggering first-register loop
+          setTimeout(() => reg.update(), 3000);
+
           // Periodic check every 5 minutes
           setInterval(() => reg.update(), 5 * 60 * 1000);
 
