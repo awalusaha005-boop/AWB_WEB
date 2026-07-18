@@ -37,7 +37,8 @@ let renderPending = false;
 let renderTimer = null;
 let visitedAwbSuffix = new Set(); // dedup: skip AWB suffix yg sudah pernah di-cek
 let copiedAwbs = new Set();      // track AWB yg sudah disalin (persistent)
-let _rateTokens = 10;            // token bucket rate limiter (10 RPS)
+let _rateTokens = 10;            // DEPRECATED: kept for batch track mode only
+const WORKER_DELAY_MS = 300;     // per-worker delay between API calls (like desktop tool)
 
 // ═══════════════════════════════════════════════════════
 // SPLASH / LOADING SCREEN
@@ -198,6 +199,46 @@ async function initApp() {
 
   // Run splash sequence after UI is ready
   runSplashSequence();
+
+  // Periodic deployment-version check: fetch index.html (no-store) and compare
+  // splash-footer text; reload when it differs (detects new deploy without manual hard refresh)
+  try {
+    const footerEl = document.querySelector('.splash-footer');
+    const currentFooter = footerEl ? footerEl.textContent.trim() : null;
+    const STORAGE_KEY = 'deploy_version';
+
+    // Initialize saved version if missing (avoid instant reload on first visit)
+    if (currentFooter && !localStorage.getItem(STORAGE_KEY)) {
+      localStorage.setItem(STORAGE_KEY, currentFooter);
+    }
+
+    async function checkForNewDeploy() {
+      try {
+        const resp = await fetch('/index.html', { cache: 'no-store' });
+        if (!resp.ok) return;
+        const txt = await resp.text();
+        const m = txt.match(/<div class="splash-footer">([\s\S]*?)<\/div>/);
+        const remoteFooter = m ? m[1].trim() : null;
+        const saved = localStorage.getItem(STORAGE_KEY);
+
+        // If we have a saved baseline and remote differs from it, update and reload once
+        if (remoteFooter && saved && remoteFooter !== saved) {
+          console.log('Detected new deployment (version changed). Reloading page...');
+          localStorage.setItem(STORAGE_KEY, remoteFooter);
+          window.location.reload();
+        }
+      } catch (err) {
+        console.warn('Deployment version check failed', err);
+      }
+    }
+
+    // Check on focus/visibility, and periodically (no immediate forced reload)
+    window.addEventListener('focus', checkForNewDeploy);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForNewDeploy(); });
+    setInterval(checkForNewDeploy, 60 * 1000);
+  } catch (e) {
+    console.warn('Version check init failed', e);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -281,7 +322,7 @@ async function trackAwbProxy(awb, courier, provider) {
   return await resp.json();
 }
 
-// ── Rate limiter (token bucket, 10 RPS) ──
+// ── Rate limiter (DEPRECATED — kept for batch track mode) ──
 async function rateAcquire() {
   while (_rateTokens < 1) {
     await new Promise(r => setTimeout(r, 100));
@@ -336,7 +377,7 @@ async function btnTrackClick() {
     await acquireSemaphore(semaphore);
     try {
       const current = ++done;
-      log(`[${current}/${awbList.length}] Melacak ${awb}...`, "info", false);
+      log(`[${current}/${awbList.length}] Melacak ${awb}...`, "info");
 
       const result = await trackAwb(awb);
       const row = settings.provider === "binderbyte"
@@ -386,7 +427,7 @@ async function btnTrackSearchClick() {
 
   // Kota optional — kalo kosong, skip filter kota, cuma filter tanggal+jam
   if (kota) {
-    log(`Filter kota: ${kota}`, "info", false);
+    log(`Filter kota: ${kota}`, "info");
   }
 
   setButtonsDisabled(true);
@@ -418,9 +459,9 @@ async function btnTrackSearchClick() {
     checkedAreas = new Set(progress.checkedAreas || []);
     if (progress.phase === "area" && progress.foundMid) {
       skipMidPhase = true;
-      log(`Lanjut: lewati fase MID, langsung AREA (MID=${progress.foundMid})`, "system", false);
+      log(`Lanjut: lewati fase MID, langsung AREA (MID=${progress.foundMid})`, "system");
     } else {
-      log(`Lanjut MID: lewati ${checkedMids.size} MID sudah dipindai`, "system", false);
+      log(`Lanjut MID: lewati ${checkedMids.size} MID sudah dipindai`, "system");
     }
   } else {
     progress = { phase: "mid", targetDate: tgl, targetKota: kota, newPrintOnly };
@@ -442,21 +483,21 @@ async function btnTrackSearchClick() {
 
     // ── Build MID order from ML ──
     const midOrder = buildRbMidOrder(tgl, timeRange);
-    log(`ML MID: titik pusat=${midOrder[0]} radius=${ml.getAdaptiveRadius()}`, "system", false);
+    log(`ML MID: titik pusat=${midOrder[0]} radius=${ml.getAdaptiveRadius()}`, "system");
 
     // ── Build fallback candidates ──
     const fallbackMax = kota ? 32 : 12; // lebih sedikit kalo kota kosong (global scan)
     let candidateMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
 
     if (candidateMids.length > 0) {
-      log(`Cek kandidat MID: ${candidateMids.slice(0, 5).join(", ")}...`, "system", false);
+      log(`Cek kandidat MID: ${candidateMids.slice(0, 5).join(", ")}...`, "system");
       let validCandidate = false;
       let bestCandidateMid = null;
       for (const cm of candidateMids.slice(0, 5)) {
         if (cts.cancelled) break;
         const probe = await trackAwb(PREFIX + cm + FIXED_FIELD);
         if (isValidBiteshipResult(probe)) {
-          log(`UJI KANDIDAT: ${PREFIX + cm + FIXED_FIELD} | info=${getBiteshipDiag(probe)}`, "info", false);
+          log(`UJI KANDIDAT: ${PREFIX + cm + FIXED_FIELD} | info=${getBiteshipDiag(probe)}`, "info");
         }
         if (isValidBiteshipResult(probe) && dateMatches(probe, tgl, timeRange)) {
           validCandidate = true;
@@ -466,7 +507,7 @@ async function btnTrackSearchClick() {
         }
       }
       if (!validCandidate) {
-        log("Kandidat MID dari histori tidak cocok tanggal target — lanjut uji MID spiral.", "system", false);
+        log("Kandidat MID dari histori tidak cocok tanggal target — lanjut uji MID spiral.", "system");
         candidateMids = [];
       } else if (bestCandidateMid) {
         candidateMids = candidateMids.filter(m => m !== bestCandidateMid);
@@ -474,85 +515,79 @@ async function btnTrackSearchClick() {
       }
     }
 
-    // ── Phase 1: MID scanning (always run, candidates are just hints) ──
-    log("🔎 Mencari MID...", "system", false);
-    log(`Titik pusat MID (ML): ${midOrder[0]} | prioritas pindai di sekitar titik pusat`, "system", false);
+    // ── Phase 1: MID scanning — Queue + Workers (seperti desktop tool) ──
+    log("🔎 Mencari MID...", "system");
+    log(`Titik pusat MID (ML): ${midOrder[0]} | prioritas pindai di sekitar titik pusat`, "system");
 
-    const midSemaphore = { current: 0, max: maxConcurrent };
     const midLock = { found: false };
     const midsToScan = midOrder;
+    const midAbort = new AbortController();
+    let midQueueIdx = 0;
 
-    let midIdx = 0;
-    while (midIdx < midsToScan.length) {
-      if (cts.cancelled || foundMid) break;
+    async function midWorker(workerId) {
+      while (!cts.cancelled && !midLock.found && midQueueIdx < midsToScan.length) {
+        const myIdx = midQueueIdx++;
+        if (myIdx >= midsToScan.length) break;
 
-      // Build batch
-      const midBatchAbort = new AbortController();
-      const midBatchTasks = [];
-      const midBatchEnd = Math.min(midIdx + maxConcurrent, midsToScan.length);
-      for (let i = midIdx; i < midBatchEnd; i++) {
-        const midStr = midsToScan[i];
+        const midStr = midsToScan[myIdx];
         if (checkedMids.has(midStr)) continue;
         const awbSuffix = midStr + FIXED_FIELD;
         if (visitedAwbSuffix.has(awbSuffix)) continue;
         const awb = PREFIX + awbSuffix;
 
-        midBatchTasks.push((async () => {
-          await acquireSemaphore(midSemaphore);
-          try {
-            if (foundMid) return;
-            await rateAcquire();
-            const result = await trackAwb(awb, COURIER, null, midBatchAbort.signal);
-            const current = ++midScanned;
-            checkedMids.add(midStr);
-            visitedAwbSuffix.add(awbSuffix);
-            progress.lastMid = midStr;
-            if (current % 200 === 0) {
-              log(`Mencari MID: dipindai ${current} | valid=${validMidAwb} | gagal=${midFailed}`, "info", false);
-              updateStats(null, current);
-              if (current % SAVE_EVERY === 0) {
-                progress.checkedMids = [...checkedMids];
-                saveProgress();
-              }
-              if (current % 500 === 0) ml.save();
-            }
+        // Per-worker delay (seperti desktop: delay_per_request=0.3s)
+        await sleep(WORKER_DELAY_MS + Math.random() * 100);
+        if (midLock.found || cts.cancelled) break;
 
-            if (!isValidBiteshipResult(result)) return;
-            validMidAwb++;
-            const date = extractShipmentDate(result);
-            const dest = buildDestination(result);
-            const dateOk = dateMatches(result, tgl, timeRange);
-            const newPrintOk = !newPrintOnly || isNewPrintStatus(result);
-            const displayDate = dateOk ? extractMatchingDate(result, tgl, timeRange) : date;
-            const mark = (dateOk && newPrintOk) ? " 🎯" : "";
-            if (date && dest)
-              log(`Mencari MID: ✅ VALID${mark}    -> ${awb} | ${displayDate} | ${dest}`, "success", false);
+        try {
+          const result = await trackAwb(awb, COURIER, null, midAbort.signal);
+          const current = ++midScanned;
+          checkedMids.add(midStr);
+          visitedAwbSuffix.add(awbSuffix);
+          progress.lastMid = midStr;
 
-            if (date && dest) {
-              ml.recordValidAwb(awb, date, dest, parseInt(midStr), 0);
+          if (current % 50 === 0) {
+            log(`Mencari MID: dipindai ${current} | valid=${validMidAwb} | gagal=${midFailed}`, "info");
+            updateStats(null, current);
+            if (current % SAVE_EVERY === 0) {
+              progress.checkedMids = [...checkedMids];
+              saveProgress();
             }
-
-            if (dateOk && newPrintOk && !midLock.found) {
-              midLock.found = true;
-              foundMid = midStr;
-              foundMidResponse = result;
-              foundMidAwb = awb;
-              midBatchAbort.abort(); // cancel remaining in-flight
-            }
-          } catch (err) {
-            if (err.name === 'AbortError') return;
-            midFailed++;
-            log(`MID ${midStr} gagal: ${err.message}`, "error");
-          } finally {
-            releaseSemaphore(midSemaphore);
+            if (current % 500 === 0) ml.save();
           }
-        })());
-      }
 
-      // Jalankan batch — aborted tasks throw & caught gracefully
-      await Promise.all(midBatchTasks);
-      midIdx = midBatchEnd;
+          if (!isValidBiteshipResult(result)) continue;
+          validMidAwb++;
+          const date = extractShipmentDate(result);
+          const dest = buildDestination(result);
+          const dateOk = dateMatches(result, tgl, timeRange);
+          const newPrintOk = !newPrintOnly || isNewPrintStatus(result);
+          const displayDate = dateOk ? extractMatchingDate(result, tgl, timeRange) : date;
+          const mark = (dateOk && newPrintOk) ? " 🎯" : "";
+          if (date && dest) {
+            log(`Mencari MID: ✅ VALID${mark}    -> ${awb} | ${displayDate} | ${dest}`, "success");
+            ml.recordValidAwb(awb, date, dest, parseInt(midStr), 0);
+          }
+
+          if (dateOk && newPrintOk && !midLock.found) {
+            midLock.found = true;
+            foundMid = midStr;
+            foundMidResponse = result;
+            foundMidAwb = awb;
+            midAbort.abort(); // cancel in-flight requests
+          }
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          midFailed++;
+          log(`MID ${midStr} gagal: ${err.message}`, "error");
+        }
+      }
     }
+
+    // Spawn worker pool
+    const midWorkers = [];
+    for (let w = 0; w < maxConcurrent; w++) midWorkers.push(midWorker(w));
+    await Promise.all(midWorkers);
 
     // ── Build candidates for AREA phase ──
     let fallbackMids = buildFallbackMids(tgl, kota, timeRange, seedMid, midOrder, fallbackMax);
@@ -572,7 +607,7 @@ async function btnTrackSearchClick() {
     let midsToScanArea = [];
     if (foundMid) midsToScanArea.push(foundMid);
     midsToScanArea.push(...fallbackMids.filter(m => m !== foundMid));
-    log(`Mode kandidat AREA: pindai ${midsToScanArea.length} kandidat MID${foundMid ? ` (lanjut dari progress MID=${foundMid})` : ""}`, "warning", false);
+    log(`Mode kandidat AREA: pindai ${midsToScanArea.length} kandidat MID${foundMid ? ` (lanjut dari progress MID=${foundMid})` : ""}`, "warning");
 
     let matchedResult = null, matchedAwb = null;
 
@@ -597,7 +632,7 @@ async function btnTrackSearchClick() {
         const cacheOut = {};
         if (ml.tryDestCache(cityKeyForCache, cacheOut)) {
           const cacheAwb = PREFIX + foundMid + String(cacheOut.area).padStart(4, "0");
-          log(`CACHE TUJUAN COCOK: ${cityKeyForCache} → AREA ${String(cacheOut.area).padStart(4, "0")} | uji ${cacheAwb}`, "system", false);
+          log(`CACHE TUJUAN COCOK: ${cityKeyForCache} → AREA ${String(cacheOut.area).padStart(4, "0")} | uji ${cacheAwb}`, "system");
           const cacheResult = await trackAwb(cacheAwb);
           if (isValidBiteshipResult(cacheResult) && matchDestination(buildDestination(cacheResult), kota) &&
               dateMatches(cacheResult, tgl, timeRange) && (!newPrintOnly || isNewPrintStatus(cacheResult))) {
@@ -615,13 +650,13 @@ async function btnTrackSearchClick() {
             if (cts.cancelled) break;
             continue;
           }
-          log("Cache tidak cocok, lanjut pindai AREA...", "info", false);
+          log("Cache tidak cocok, lanjut pindai AREA...", "info");
         }
       }
 
-      log(`🔎 Mencari AREA (daerah) untuk MID ${foundMid}...`, "system", false);
+      log(`🔎 Mencari AREA (daerah) untuk MID ${foundMid}...`, "system");
 
-      const areaSemaphore = { current: 0, max: maxConcurrent };
+      const areaAbort = new AbortController();
       const foundAreaLock = { found: false };
       let foundArea = null;
 
@@ -629,97 +664,95 @@ async function btnTrackSearchClick() {
       const ceiling = ml.getAreaCeiling(extractCityKey(kota));
       log(`Pindai AREA: urutan KDE panduan ML (batas ${ceiling}, ${extractCityKey(kota)}) | mid=${foundMid}`, "system");
 
-      let areaIdx = 0;
-      while (areaIdx < areaOrder.length) {
-        // 1. PAUSE GATE — kalau match ditemukan di batch sebelumnya, tunggu Next
-        if (foundArea) {
-          showNextButton();
-          log("🎉 Match ditemukan! Klik ⏭ Next untuk cari MID berikutnya.", "success");
-          await waitForNext();
-          hideNextButton();
-          break; // loncat ke midCandidate berikutnya
-        }
-        if (cts.cancelled) break;
+      let areaQueueIdx = 0;
+      const areaItems = areaOrder;
 
-        // 2. BUILD BATCH — kumpulkan maxConcurrent task
-        const areaBatchAbort = new AbortController();
-        const batchTasks = [];
-        const batchEnd = Math.min(areaIdx + maxConcurrent, areaOrder.length);
-        for (let i = areaIdx; i < batchEnd; i++) {
-          const areaStr = areaOrder[i];
+      async function areaWorker(workerId) {
+        while (!cts.cancelled && !foundAreaLock.found && areaQueueIdx < areaItems.length) {
+          const myIdx = areaQueueIdx++;
+          if (myIdx >= areaItems.length) break;
+
+          const areaStr = areaItems[myIdx];
           if (checkedAreas.has(areaStr)) continue;
           const awbSuffix = foundMid + areaStr;
           if (visitedAwbSuffix.has(awbSuffix)) continue;
           const awb = PREFIX + awbSuffix;
 
-          batchTasks.push((async () => {
-            await acquireSemaphore(areaSemaphore);
-            try {
-              if (foundArea) return;
-              await rateAcquire();
-              const result = await trackAwb(awb, COURIER, null, areaBatchAbort.signal);
-              const current = ++areaScanned;
-              checkedAreas.add(areaStr);
-              visitedAwbSuffix.add(awbSuffix);
-              progress.lastArea = areaStr;
-              if (current % 200 === 0) {
-                log(`Mencari AREA: dipindai ${current} | mid=${foundMid} | valid=${validAreaAwb} | gagal=${areaFailed} | cocok=${foundCounter}`, "info", false);
-                updateStats(null, current);
-                if (current % SAVE_EVERY === 0) {
-                  progress.checkedAreas = [...checkedAreas];
-                  saveProgress();
-                }
+          // Per-worker delay
+          await sleep(WORKER_DELAY_MS + Math.random() * 100);
+          if (foundAreaLock.found || cts.cancelled) break;
+
+          try {
+            const result = await trackAwb(awb, COURIER, null, areaAbort.signal);
+            const current = ++areaScanned;
+            checkedAreas.add(areaStr);
+            visitedAwbSuffix.add(awbSuffix);
+            progress.lastArea = areaStr;
+
+            if (current % 50 === 0) {
+              log(`Mencari AREA: dipindai ${current} | mid=${foundMid} | valid=${validAreaAwb} | gagal=${areaFailed} | cocok=${foundCounter}`, "info");
+              updateStats(null, current);
+              if (current % SAVE_EVERY === 0) {
+                progress.checkedAreas = [...checkedAreas];
+                saveProgress();
               }
-
-              if (!isValidBiteshipResult(result)) return;
-              validAreaAwb++;
-
-              const date = extractShipmentDate(result);
-              const dest = buildDestination(result);
-              const destOk = matchDestination(dest, kota);
-              const dateOk = dateMatches(result, tgl, timeRange);
-              const newPrintOk = !newPrintOnly || isNewPrintStatus(result);
-              const matchOk = destOk && dateOk && newPrintOk;
-              const displayDate = dateOk ? extractMatchingDate(result, tgl, timeRange) : date;
-
-              if (date && dest) {
-                ml.recordValidAwb(awb, date, dest, parseInt(foundMid), parseInt(areaStr));
-              }
-
-              if (!matchOk) return;
-              foundCounter++;
-              if (!foundAreaLock.found) {
-                foundAreaLock.found = true;
-                foundArea = areaStr;
-                areaBatchAbort.abort(); // cancel remaining in-flight
-                matchedAwb = awb;
-                matchedResult = result;
-                results.push(createBiteshipRow(awb, result, tgl, timeRange));
-                renderResults();
-                updateStats(null, areaScanned);
-                log(`Mencari AREA: ✅ VALID 🎯    -> ${awb} | ${displayDate} | ${dest}`, "success", false);
-              }
-            } catch (err) {
-              if (err.name === 'AbortError') return;
-              areaFailed++;
-              log(`AREA ${awb} gagal: ${err.message}`, "error");
-            } finally {
-              releaseSemaphore(areaSemaphore);
             }
-          })());
+
+            if (!isValidBiteshipResult(result)) continue;
+            validAreaAwb++;
+
+            const date = extractShipmentDate(result);
+            const dest = buildDestination(result);
+            const destOk = matchDestination(dest, kota);
+            const dateOk = dateMatches(result, tgl, timeRange);
+            const newPrintOk = !newPrintOnly || isNewPrintStatus(result);
+            const matchOk = destOk && dateOk && newPrintOk;
+            const displayDate = dateOk ? extractMatchingDate(result, tgl, timeRange) : date;
+
+            if (date && dest) {
+              ml.recordValidAwb(awb, date, dest, parseInt(foundMid), parseInt(areaStr));
+            }
+
+            // Log SEMUA valid AWB (seperti desktop tool)
+            if (date && dest) {
+              const mark = matchOk ? " 🎯" : (destOk ? " 📅" : "");
+              log(`Mencari AREA: ✅ VALID${mark}    -> ${awb} | ${displayDate} | ${dest}`, "success");
+            }
+
+            if (!matchOk) continue;
+            foundCounter++;
+            if (!foundAreaLock.found) {
+              foundAreaLock.found = true;
+              foundArea = areaStr;
+              areaAbort.abort(); // cancel in-flight requests
+              matchedAwb = awb;
+              matchedResult = result;
+              results.push(createBiteshipRow(awb, result, tgl, timeRange));
+              renderResults();
+              updateStats(null, areaScanned);
+            }
+          } catch (err) {
+            if (err.name === 'AbortError') return;
+            areaFailed++;
+            log(`AREA ${awb} gagal: ${err.message}`, "error");
+          }
         }
-
-        // 3. JALANKAN BATCH — aborted tasks throw & caught gracefully
-        await Promise.all(batchTasks);
-
-        // 4. MAJUKAN INDEX — catat sudah melewati batch ini
-        areaIdx = batchEnd;
-
-        // 5. CEK HASIL — kalau match, loop bakal pause di step 1 iterasi berikutnya
       }
-      // Drain remaining tasks (sisa yang gak penuh 1 batch)
 
-      // Reset foundArea untuk MID kandidat berikutnya — biar PAUSE GATE gak ke-trigger duluan
+      // Spawn worker pool
+      const areaWorkers = [];
+      for (let w = 0; w < maxConcurrent; w++) areaWorkers.push(areaWorker(w));
+      await Promise.all(areaWorkers);
+
+      // Pause gate — kalau match ditemukan, tunggu Next sebelum MID kandidat berikutnya
+      if (foundArea) {
+        showNextButton();
+        log("🎉 Match ditemukan! Klik ⏭ Next untuk cari MID berikutnya.", "success");
+        await waitForNext();
+        hideNextButton();
+      }
+
+      // Reset foundArea untuk MID kandidat berikutnya
       foundArea = null;
       foundAreaLock.found = false;
 
@@ -789,7 +822,7 @@ function buildRbMidOrder(targetDate, timeRange) {
   let adjustedRadius = radius;
   if (varianceSamples.length === 0) {
     adjustedRadius = Math.min(radius, 100);
-    log(`Belum ada data variance untuk tanggal ${targetDate}, pakai radius aman=${adjustedRadius}`, "system", false);
+    log(`Belum ada data variance untuk tanggal ${targetDate}, pakai radius aman=${adjustedRadius}`, "system");
   }
 
   return spiralOrder(anchor, adjustedRadius, 10000).map(i => String(i).padStart(4, "0"));
@@ -1258,7 +1291,7 @@ const LOG_MAX_CHARS = 32000;
 let _logMinimal = false; // Minimal mode: only show match/error
 let _logAllLines = [];  // Full log buffer for minimal mode toggle
 
-function log(msg, type = "info", writeToLog = true) {
+function log(msg, type = "info") {
   const timestamp = new Date().toTimeString().substring(0, 8);
   const line = `[${timestamp}] ${msg}\n`;
   _logAllLines.push({ line, type });
