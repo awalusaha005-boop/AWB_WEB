@@ -235,45 +235,27 @@
 <script type="module" src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    let refreshing = false;
+    let _swRefreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
+      if (_swRefreshing) return;
+      _swRefreshing = true;
       window.location.reload();
     });
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js')
         .then(reg => {
           console.log('SW registered');
-          
-          function checkForUpdate() {
-            reg.update();
-          }
-          
-          // Check on updatefound
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
-                console.log('SW updated, reloading...');
-                window.location.reload();
-              }
-            });
-          });
-          
+
           // Periodic check every 5 minutes
-          setInterval(checkForUpdate, 5 * 60 * 1000);
-          
+          setInterval(() => reg.update(), 5 * 60 * 1000);
+
           // Check when tab becomes visible
           document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) checkForUpdate();
+            if (!document.hidden) reg.update();
           });
-          
+
           // Check when window regains focus
-          window.addEventListener('focus', checkForUpdate);
-          
-          // Initial check
-          checkForUpdate();
+          window.addEventListener('focus', () => reg.update());
         })
         .catch(err => console.log('SW failed', err));
     });

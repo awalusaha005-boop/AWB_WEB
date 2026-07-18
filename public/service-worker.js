@@ -1,4 +1,4 @@
-const CACHE_NAME = 'awb-tracker-v8';
+const CACHE_NAME = 'awb-tracker-v9';
 const urlsToCache = [
   './',
   './index.html',
