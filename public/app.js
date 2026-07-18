@@ -719,6 +719,10 @@ async function btnTrackSearchClick() {
       }
       // Drain remaining tasks (sisa yang gak penuh 1 batch)
 
+      // Reset foundArea untuk MID kandidat berikutnya — biar PAUSE GATE gak ke-trigger duluan
+      foundArea = null;
+      foundAreaLock.found = false;
+
       if (foundCounter === 0)
         log(`MID ${foundMid} selesai: belum match (scan=${areaScanned} gagal=${areaFailed}), lanjut kandidat berikutnya jika ada.`, "warning");
     }
