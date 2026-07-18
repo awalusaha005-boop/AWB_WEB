@@ -247,6 +247,17 @@ export class AwbMlEngine {
         return Math.min(9999, Math.round(maxArea * 1.25));
       }
     }
+    // No city → lower ceiling (match is easier, no need to scan all 10k)
+    if (!cityKey) {
+      if (this.history && this.history.length >= 20) {
+        const areas = this.history.filter(h => h.area > 0).map(h => h.area).sort((a, b) => a - b);
+        if (areas.length >= 20) {
+          const p95Idx = Math.max(0, Math.min(areas.length - 1, Math.ceil(areas.length * 0.95) - 1));
+          return Math.max(255, Math.min(2000, Math.round(areas[p95Idx] * 1.25)));
+        }
+      }
+      return 2000; // default cap for no-city search
+    }
     if (!this.history || this.history.length < 20) return 9999;
     const areas = this.history.filter(h => h.area > 0).map(h => h.area).sort((a, b) => a - b);
     if (areas.length < 20) return 9999;

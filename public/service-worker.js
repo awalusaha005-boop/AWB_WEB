@@ -1,4 +1,4 @@
-const CACHE_NAME = 'awb-tracker-v6';
+const CACHE_NAME = 'awb-tracker-v8';
 const urlsToCache = [
   './',
   './index.html',
@@ -17,29 +17,18 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
-  // Activate immediately — don't wait for old SW to release
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    (async () => {
-      // Clean old caches
-      const keys = await caches.keys();
-      await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
-      // Claim all clients
-      await self.clients.claim();
-      // Reload all open tabs so they get fresh content
-      const clients = await self.clients.matchAll({ type: 'window' });
-      for (const client of clients) {
-        client.navigate(client.url);
-      }
-    })()
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('fetch', event => {
-  // Network-first for HTML/JS — always try fresh, fallback to cache
   const url = new URL(event.request.url);
   if (url.pathname.match(/\.(html|js|css)$/) || url.pathname === '/' || url.pathname.endsWith('/')) {
     event.respondWith(
@@ -52,7 +41,6 @@ self.addEventListener('fetch', event => {
         .catch(() => caches.match(event.request))
     );
   } else {
-    // Cache-first for static assets (images, fonts, etc.)
     event.respondWith(
       caches.match(event.request).then(response => response || fetch(event.request))
     );
