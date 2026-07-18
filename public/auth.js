@@ -5,6 +5,7 @@
 const AUTH_KEY = "awb_auth";
 const AUTH_API = "/api/auth";
 const DEVICE_ID_KEY = "awb_device_id";
+const SESSION_VERSION = 2; // Bump ini untuk force logout semua user
 
 // ── State ──
 let authUser = null;
@@ -57,6 +58,13 @@ function loadAuth() {
     if (!raw) return null;
     const data = JSON.parse(raw);
     const now = Date.now();
+    
+    // Check session version
+    if (data.sessionVersion !== SESSION_VERSION) {
+      localStorage.removeItem(AUTH_KEY);
+      return null;
+    }
+    
     if (data.expires && data.expires < now) {
       localStorage.removeItem(AUTH_KEY);
       return null;
@@ -71,6 +79,7 @@ function saveAuth(username, tipe) {
   const data = {
     username,
     tipe,
+    sessionVersion: SESSION_VERSION,
     expires: Date.now() + 24 * 60 * 60 * 1000,
   };
   localStorage.setItem(AUTH_KEY, JSON.stringify(data));
