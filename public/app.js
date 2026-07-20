@@ -636,6 +636,26 @@ async function btnTrackSearchClick() {
               dateMatches(cacheResult, tgl, timeRange) && (!newPrintOnly || isNewPrintStatus(cacheResult))) {
             ml.recordValidAwb(cacheAwb, extractShipmentDate(cacheResult), buildDestination(cacheResult), parseInt(foundMid), cacheOut.area);
             results.push(createBiteshipRow(cacheAwb, cacheResult, tgl, timeRange));
+            
+            // =========================================================================
+            // BARU: LOGIKA SORTING (URUTAN JAM TERMUDA) SAAT CACHE HIT
+            // =========================================================================
+            const chkSortNewest = document.getElementById('chkSortNewest');
+            const isSortNewest = chkSortNewest ? chkSortNewest.checked : false;
+
+            if (isSortNewest) {
+              results.sort((a, b) => {
+                if (a.jam && b.jam) return b.jam.localeCompare(a.jam);
+                return 0;
+              });
+            } else {
+              results.sort((a, b) => {
+                if (a.jam && b.jam) return a.jam.localeCompare(b.jam);
+                return 0;
+              });
+            }
+            // =========================================================================
+            
             renderResults();
             updateStats(null, areaScanned); // real-time cache match
             matchedAwb = cacheAwb;
@@ -726,6 +746,26 @@ async function btnTrackSearchClick() {
               matchedAwb = awb;
               matchedResult = result;
               results.push(createBiteshipRow(awb, result, tgl, timeRange));
+              
+              // =========================================================================
+              // BARU: LOGIKA SORTING (URUTAN JAM TERMUDA) SAAT AREA KETEMU
+              // =========================================================================
+              const chkSortNewest = document.getElementById('chkSortNewest');
+              const isSortNewest = chkSortNewest ? chkSortNewest.checked : false;
+
+              if (isSortNewest) {
+                results.sort((a, b) => {
+                  if (a.jam && b.jam) return b.jam.localeCompare(a.jam);
+                  return 0;
+                });
+              } else {
+                results.sort((a, b) => {
+                  if (a.jam && b.jam) return a.jam.localeCompare(b.jam);
+                  return 0;
+                });
+              }
+              // =========================================================================
+
               renderResults();
               updateStats(null, areaScanned);
             }
@@ -761,6 +801,26 @@ async function btnTrackSearchClick() {
     // ── Final stats ──
     const duration = new Date(Date.now() - startTime);
     updateStats(duration, midScanned + areaScanned);
+    
+    // =========================================================================
+    // BARU: LOGIKA SORTING (URUTAN JAM TERMUDA) FINAL
+    // =========================================================================
+    const chkSortNewest = document.getElementById('chkSortNewest');
+    const isSortNewest = chkSortNewest ? chkSortNewest.checked : false;
+
+    if (isSortNewest) {
+      results.sort((a, b) => {
+        if (a.jam && b.jam) return b.jam.localeCompare(a.jam);
+        return 0;
+      });
+    } else {
+      results.sort((a, b) => {
+        if (a.jam && b.jam) return a.jam.localeCompare(b.jam);
+        return 0;
+      });
+    }
+    // =========================================================================
+
     renderResultsNow();
 
     log("=== PENCARIAN SELESAI ===", "system");
@@ -1370,7 +1430,7 @@ function flushLogQueue() {
   const tab = document.getElementById("logTabBody");
   if (tab) {
     tab.textContent = body.textContent;
-    tab.scrollTop = tab.scrollHeight;
+    tab.scrollTop = body.scrollHeight;
   }
 }
 
