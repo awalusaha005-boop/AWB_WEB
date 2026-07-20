@@ -12,46 +12,176 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-</head>
-<body>
 
-<!-- ═══ SPLASH / LOADING SCREEN ═══ -->
-<div id="splashScreen" class="splash">
-  <div class="splash-bg">
-    <div class="splash-dotgrid"></div>
-    <div class="splash-glow"></div>
-    <div class="splash-corner splash-corner-tl"></div>
-    <div class="splash-corner splash-corner-tr"></div>
-    <div class="splash-corner splash-corner-bl"></div>
-    <div class="splash-corner splash-corner-br"></div>
-  </div>
-  <div class="splash-content">
-    <!-- Beacon / Logo -->
-    <div class="splash-logo">
-      <svg class="splash-ring-outer" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="46" fill="none" stroke="#157e93" stroke-width="1" stroke-dasharray="1,6"/>
-      </svg>
-      <svg class="splash-ring-inner" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="34" fill="none" stroke="#35d7f0" stroke-width="1.2" stroke-dasharray="10,5" opacity="0.55"/>
-      </svg>
-      <div class="splash-orbit">
-        <div class="splash-orbit-dot"></div>
-      </div>
-      <img class="splash-logo-icon" src="New-AWB.png" alt="SiCepat Jinxpro">
-    </div>
-    <!-- Wordmark -->
-    <div class="splash-wordmark">SICEPAT JINXPRO</div>
-    <div class="splash-subtitle">TOOL PELACAK RESI OTOMATIS</div>
-    <!-- Status -->
-    <div class="splash-status-row">
-      <span class="splash-status-text" id="splashStatus">MENYIAPKAN</span>
-      <span class="splash-percent" id="splashPercent">0%</span>
-    </div>
-    <div class="splash-segbar" id="splashSegbar"></div>
-    <!-- Footer -->
-    <div class="splash-footer">v2.1.0 WEB &nbsp;•&nbsp; build 2026.07</div>
-  </div>
+  <!-- ========================================== -->
+  <!-- CSS KHUSUS SCI-FI HUD LOADING SCREEN START -->
+  <!-- ========================================== -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600&display=swap');
+
+    :root {
+        --cyan-bright: #00e5ff; 
+        --cyan-dim: rgba(0, 229, 255, 0.3);
+    }
+
+    /* Kunci scroll body saat loading */
+    body.hud-is-loading {
+        overflow: hidden !important;
+    }
+
+    #hud-overlay {
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        background-color: #02040a;
+        background-image: 
+            linear-gradient(rgba(0, 229, 255, 0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 229, 255, 0.02) 1px, transparent 1px);
+        background-size: 30px 30px;
+        background-position: center center;
+        color: white;
+        font-family: 'Share Tech Mono', monospace;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 999999; /* Pastikan selalu paling atas */
+        cursor: default;
+        transition: opacity 1s ease-in-out;
+    }
+
+    #hud-overlay .hud-corner {
+        position: absolute; width: 40px; height: 40px; border: 2px solid var(--cyan-bright); opacity: 0.3; 
+    }
+    #hud-overlay .corner-tl { top: 30px; left: 30px; border-right: none; border-bottom: none; }
+    #hud-overlay .corner-tr { top: 30px; right: 30px; border-left: none; border-bottom: none; }
+    #hud-overlay .corner-bl { bottom: 30px; left: 30px; border-right: none; border-top: none; }
+    #hud-overlay .corner-br { bottom: 30px; right: 30px; border-left: none; border-top: none; }
+
+    #hud-overlay .hud-container {
+        position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; max-width: 900px; z-index: 10;
+    }
+
+    #hud-overlay .brand-header {
+        position: absolute; top: -150px; display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%;
+    }
+    
+    #hud-overlay .custom-logo {
+        height: 55px; width: auto; margin-bottom: 15px;
+    }
+
+    #hud-overlay .brand-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 32px; font-weight: bold; letter-spacing: 3px; margin: 0; text-transform: uppercase; line-height: 1;
+    }
+    #hud-overlay .brand-title .white-text { color: #fff; }
+    #hud-overlay .brand-title .cyan-text { color: var(--cyan-bright); }
+
+    #hud-overlay .brand-sub {
+        font-size: 12px; color: var(--cyan-bright); letter-spacing: 5px; margin-top: 10px; opacity: 0.9;
+    }
+
+    #hud-overlay .core-reactor {
+        position: relative; width: 350px; height: 350px; display: flex; justify-content: center; align-items: center;
+    }
+
+    #hud-overlay .ring-1 {
+        position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 1px solid var(--cyan-dim); border-left: 2px solid var(--cyan-bright); border-right: 2px solid var(--cyan-bright); animation: hud-rotate-slow 10s linear infinite;
+    }
+    #hud-overlay .ring-2 {
+        position: absolute; width: 85%; height: 85%; border-radius: 50%; border: 4px dashed var(--cyan-dim); border-top: 4px solid var(--cyan-bright); border-bottom: 4px solid var(--cyan-bright); animation: hud-rotate-fast-rev 6s linear infinite;
+    }
+    #hud-overlay .ring-3 {
+        position: absolute; width: 70%; height: 70%; border-radius: 50%; border: 2px solid var(--cyan-bright); border-left-color: transparent; border-right-color: transparent; animation: hud-rotate-med 4s linear infinite;
+    }
+
+    #hud-overlay .center-display {
+        position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5;
+    }
+
+    #hud-overlay .perc-number {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 70px; font-weight: 500; color: transparent; -webkit-text-stroke: 1px var(--cyan-bright); line-height: 1; margin-bottom: 5px;
+    }
+
+    #hud-overlay .perc-label {
+        font-size: 10px; color: var(--cyan-bright); letter-spacing: 3px;
+    }
+
+    #hud-overlay .side-panel {
+        position: absolute; top: 50%; transform: translateY(-50%); width: 220px; background: transparent; border: 1px solid var(--cyan-dim); padding: 15px; box-sizing: border-box;
+    }
+
+    #hud-overlay .panel-left { left: -280px; border-right: 3px solid var(--cyan-bright); text-align: right; }
+    #hud-overlay .panel-right { right: -280px; border-left: 3px solid var(--cyan-bright); text-align: left; }
+    #hud-overlay .panel-left::after { content: ''; position: absolute; right: -60px; top: 50%; width: 60px; height: 1px; background: var(--cyan-dim); }
+    #hud-overlay .panel-right::before { content: ''; position: absolute; left: -60px; top: 50%; width: 60px; height: 1px; background: var(--cyan-dim); }
+
+    #hud-overlay .panel-title {
+        color: #fff; font-size: 12px; margin: 0 0 10px 0; letter-spacing: 2px; border-bottom: 1px solid var(--cyan-dim); padding-bottom: 5px;
+    }
+    #hud-overlay .panel-data {
+        color: var(--cyan-bright); font-size: 10px; margin: 5px 0; letter-spacing: 1px; font-family: monospace;
+    }
+    #hud-overlay .data-highlight { color: #fff; font-weight: bold; }
+
+    @keyframes hud-rotate-slow { 100% { transform: rotate(360deg); } }
+    @keyframes hud-rotate-med { 100% { transform: rotate(360deg); } }
+    @keyframes hud-rotate-fast-rev { 100% { transform: rotate(-360deg); } }
+  </style>
+  <!-- ========================================== -->
+  <!-- CSS KHUSUS SCI-FI HUD LOADING SCREEN END   -->
+  <!-- ========================================== -->
+
+</head>
+<body class="hud-is-loading">
+
+<!-- DUMMY ELEMENTS: Sengaja disembunyikan agar app.js bawaan lu nggak error pas nyari ID splashScreen -->
+<div id="splashScreen" style="display: none;">
+  <span id="splashStatus"></span><span id="splashPercent"></span><div id="splashSegbar"></div>
 </div>
+
+<!-- ========================================== -->
+<!-- OVERLAY SCI-FI HUD (MENGGANTIKAN SPLASH LAMA)-->
+<!-- ========================================== -->
+<div id="hud-overlay">
+    <div class="hud-corner corner-tl"></div>
+    <div class="hud-corner corner-tr"></div>
+    <div class="hud-corner corner-bl"></div>
+    <div class="hud-corner corner-br"></div>
+
+    <div class="hud-container">
+        <div class="brand-header">
+            <img src="New-AWB.png" alt="Logo SiCepat" class="custom-logo">
+            <h1 class="brand-title"><span class="white-text">SiCepat</span> <span class="cyan-text">Jinxpro</span></h1>
+            <div class="brand-sub">AUTOMATED AWB TRACKER · V2.1 WEB</div>
+        </div>
+
+        <div class="core-reactor">
+            <div class="ring-1"></div>
+            <div class="ring-2"></div>
+            <div class="ring-3"></div>
+            
+            <div class="center-display">
+                <div class="perc-number" id="hud-percentage">0%</div>
+                <div class="perc-label" id="hud-center-label">BOOTING...</div>
+            </div>
+
+            <div class="side-panel panel-left">
+                <p class="panel-title">SYS_DIAGNOSTIC</p>
+                <p class="panel-data">MEMORY: <span class="data-highlight">OK</span></p>
+                <p class="panel-data">NETWORK: <span class="data-highlight" id="hud-net-status">CONNECTING</span></p>
+                <p class="panel-data">DB_SYNC: <span class="data-highlight" id="hud-db-status">PENDING</span></p>
+            </div>
+
+            <div class="side-panel panel-right">
+                <p class="panel-title">PROCESS_LOG</p>
+                <p class="panel-data" id="hud-log-1">> INITIALIZING_</p>
+                <p class="panel-data" id="hud-log-2">> WAITING_</p>
+                <p class="panel-data" id="hud-log-3">> ...</p>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
 
 <!-- ═══ TOPBAR ═══ -->
 <header class="topbar">
@@ -245,24 +375,86 @@
       navigator.serviceWorker.register('service-worker.js')
         .then(reg => {
           console.log('SW registered');
-
-          // Delayed check: detect new Vercel deploy without triggering first-register loop
           setTimeout(() => reg.update(), 3000);
-
-          // Periodic check every 5 minutes
           setInterval(() => reg.update(), 5 * 60 * 1000);
-
-          // Check when tab becomes visible
           document.addEventListener('visibilitychange', () => {
             if (!document.hidden) reg.update();
           });
-
-          // Check when window regains focus
           window.addEventListener('focus', () => reg.update());
         })
         .catch(err => console.log('SW failed', err));
     });
   }
+</script>
+
+<!-- ========================================== -->
+<!-- SCRIPT KHUSUS ANIMASI HUD LOADING SCREEN   -->
+<!-- ========================================== -->
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+      const percText = document.getElementById('hud-percentage');
+      const centerLabel = document.getElementById('hud-center-label');
+      const netStatus = document.getElementById('hud-net-status');
+      const dbStatus = document.getElementById('hud-db-status');
+      const log1 = document.getElementById('hud-log-1');
+      const log2 = document.getElementById('hud-log-2');
+      const log3 = document.getElementById('hud-log-3');
+
+      let progress = 0;
+
+      const stages = [
+          { p: 10, c: "BOOTING...", net: "SECURE", db: "PENDING", l1: "> KERNEL_LOADED", l2: "> WAITING_", l3: "> ..." },
+          { p: 35, c: "SYNCING...", net: "CONNECTED", db: "FETCHING", l1: "> KERNEL_LOADED", l2: "> SYNC_AWB_DB...", l3: "> ..." },
+          { p: 65, c: "BUILDING UI", net: "CONNECTED", db: "UPDATED", l1: "> SYNC_AWB_DB...", l2: "> MOUNTING_UI...", l3: "> ASSETS_READY" },
+          { p: 90, c: "FINAL CHECK", net: "STABLE", db: "VERIFIED", l1: "> MOUNTING_UI...", l2: "> CHECKING_VARS", l3: "> ALMOST_DONE" },
+          { p: 100, c: "SYSTEM READY", net: "ONLINE", db: "ACTIVE", l1: "> ALL_SYSTEMS_GO", l2: "> READY_TO_TRACK", l3: "> STANDBY_" }
+      ];
+
+      let stageIndex = 0;
+
+      function simulateLoading() {
+          progress += Math.random() * 0.5 + 0.3; 
+          if (progress > 100) progress = 100;
+
+          percText.innerText = Math.floor(progress) + '%';
+
+          if (stageIndex < stages.length && progress >= stages[stageIndex].p) {
+              centerLabel.innerText = stages[stageIndex].c;
+              netStatus.innerText = stages[stageIndex].net;
+              dbStatus.innerText = stages[stageIndex].db;
+              log1.innerText = stages[stageIndex].l1;
+              log2.innerText = stages[stageIndex].l2;
+              log3.innerText = stages[stageIndex].l3;
+              stageIndex++;
+          }
+
+          if (progress < 100) {
+              requestAnimationFrame(simulateLoading);
+          } else {
+              // 100% Tercapai: Tahan 1 detik, lalu Fade Out dan Munculkan Web Asli
+              percText.innerText = '100%';
+              centerLabel.innerText = 'SYSTEM READY';
+              netStatus.innerText = 'ONLINE';
+              dbStatus.innerText = 'ACTIVE';
+              log1.innerText = '> ALL_SYSTEMS_GO';
+              log2.innerText = '> READY_TO_TRACK';
+              log3.innerText = '> STANDBY_';
+
+              setTimeout(() => {
+                  const overlay = document.getElementById('hud-overlay');
+                  overlay.style.opacity = '0'; // Mulai efek fade out transparan
+                  
+                  setTimeout(() => {
+                      overlay.style.display = 'none'; // Hilangkan HUD sepenuhnya
+                      document.body.classList.remove('hud-is-loading'); // Kembalikan fungsi scroll
+                  }, 1000); // Waktu yang sama dengan CSS transition (1s)
+
+              }, 1200); // Tahan layar 100% selama 1.2 detik sebelum menghilang
+          }
+      }
+
+      requestAnimationFrame(simulateLoading);
+  });
 </script>
 </body>
 </html>
